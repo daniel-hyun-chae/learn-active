@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "Learners Mobile",
+    "slug": "learners-mobile",
+    "version": "0.0.0",
+    "orientation": "default",
+    "sdkVersion": "50.0.0",
+    "platforms": ["ios", "android"],
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"]
+  }
+}

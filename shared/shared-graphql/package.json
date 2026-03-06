@@ -1,0 +1,14 @@
+{
+  "name": "@app/shared-graphql",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "dependencies": {
+    "@app/shared-config": "workspace:*",
+    "@tanstack/query-core": "^5.56.0",
+    "graphql-request": "^7.1.0"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

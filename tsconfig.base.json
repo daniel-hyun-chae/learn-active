@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@app/shared-config": ["shared/shared-config/src/index.ts"],
+      "@app/shared-graphql": ["shared/shared-graphql/src/index.ts"],
+      "@app/shared-i18n": ["shared/shared-i18n/src/index.ts"],
+      "@app/shared-tokens": ["shared/shared-tokens/src/index.ts"],
+      "@app/shared-ui": ["shared/shared-ui/src/index.ts"],
+      "@app/shared-utils": ["shared/shared-utils/src/index.ts"]
+    }
+  }
+}

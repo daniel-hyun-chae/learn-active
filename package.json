@@ -1,0 +1,29 @@
+{
+  "name": "learning-platform",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@9.12.2",
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "format": "prettier --check .",
+    "setup": "node scripts/setup-env.mjs",
+    "verify:setup": "node scripts/verify-startup.mjs",
+    "verify:startup": "node scripts/verify-startup.mjs",
+    "smoke:local": "node scripts/smoke-local.mjs",
+    "dev:stack": "node scripts/dev-stack.mjs",
+    "test:unit": "node --test tests/unit",
+    "test:integration": "node --test tests/integration",
+    "test:e2e": "node --test tests/e2e"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.16.0",
+    "@typescript-eslint/parser": "^7.16.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.3.3",
+    "turbo": "^2.0.12",
+    "typescript": "^5.6.3"
+  }
+}

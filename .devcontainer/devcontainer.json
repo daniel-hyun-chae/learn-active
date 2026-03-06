@@ -1,0 +1,28 @@
+{
+  "name": "learn-active-dev",
+  "dockerComposeFile": "../docker-compose.devcontainer.yml",
+  "service": "dev",
+  "workspaceFolder": "/workspaces/learn-active",
+  "forwardPorts": [4000, 4100],
+  "overrideCommand": false,
+  "remoteUser": "node",
+  "containerUser": "node",
+  "updateRemoteUserUID": false,
+  "remoteEnv": {
+    "COREPACK_ENABLE_DOWNLOAD_PROMPT": "0"
+  },
+
+  "postCreateCommand": "corepack prepare pnpm@9.12.2 --activate && pnpm install && sh scripts/devcontainer-install-opencode.sh",
+  "postStartCommand": "sh -lc 'if [ ! -d node_modules/.pnpm ]; then pnpm install; fi; pnpm --filter @app/api db:migrate'",
+  "mounts": [
+    "source=${localEnv:HOME}/.ssh,target=/home/node/.ssh,type=bind",
+    "source=${localWorkspaceFolderBasename}-bashhistory,target=/commandhistory,type=volume",
+    "source=${localEnv:HOME}/.netrc,target=/home/node/.netrc,type=bind",
+    "source=${localEnv:HOME}/.local/share/opencode/auth.json,target=/home/node/.local/share/opencode/auth.json,type=bind,consistency=cached"
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": ["sst-dev.opencode"]
+    }
+  }
+}

@@ -1,0 +1,11 @@
+node_modules
+.git
+.turbo
+dist
+build
+.output
+.expo
+*.log
+apps/*/node_modules
+shared/*/node_modules
+packages

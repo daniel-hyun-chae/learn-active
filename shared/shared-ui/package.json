@@ -1,0 +1,15 @@
+{
+  "name": "@app/shared-ui",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "peerDependencies": {
+    "react": "^18.2.0"
+  },
+  "dependencies": {
+    "@app/shared-tokens": "workspace:*"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

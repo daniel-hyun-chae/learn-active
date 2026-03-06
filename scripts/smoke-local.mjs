@@ -1,0 +1,266 @@
+import { spawn, spawnSync } from 'node:child_process'
+import path from 'node:path'
+import net from 'node:net'
+
+const pnpmCmd = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
+
+const ensureScript = path.join(process.cwd(), 'scripts', 'ensure-pnpm.mjs')
+const routeTreeScript = path.join(
+  process.cwd(),
+  'scripts',
+  'verify-route-tree.mjs',
+)
+const preflight = spawnSync(process.execPath, [ensureScript], {
+  stdio: 'inherit',
+  shell: process.platform === 'win32',
+})
+
+if (preflight.error) {
+  console.error('[smoke] pnpm preflight failed to start', preflight.error)
+  process.exit(1)
+}
+
+if (preflight.status !== 0) {
+  console.error(`[smoke] pnpm preflight failed with ${preflight.status}`)
+  process.exit(preflight.status ?? 1)
+}
+
+const routeCheck = spawnSync(process.execPath, [routeTreeScript], {
+  stdio: 'inherit',
+  shell: process.platform === 'win32',
+})
+
+if (routeCheck.error) {
+  console.error('[smoke] route tree check failed to start', routeCheck.error)
+  process.exit(1)
+}
+
+if (routeCheck.status !== 0) {
+  console.error(`[smoke] route tree check failed with ${routeCheck.status}`)
+  process.exit(routeCheck.status ?? 1)
+}
+
+function run(command, args, options = {}) {
+  return spawn(command, args, { stdio: 'inherit', ...options })
+}
+
+async function canListen(port, host) {
+  return new Promise((resolve) => {
+    const server = net.createServer()
+    server.once('error', (error) => {
+      if (error?.code === 'EADDRNOTAVAIL' || error?.code === 'EAFNOSUPPORT') {
+        resolve(null)
+        return
+      }
+      resolve(false)
+    })
+    server.once('listening', () => server.close(() => resolve(true)))
+    server.listen(port, host)
+  })
+}
+
+async function findAvailablePort(startPort, reserved = new Set()) {
+  for (let port = startPort; port < startPort + 100; port += 1) {
+    if (reserved.has(port)) {
+      continue
+    }
+
+    const ipv4 = await canListen(port, '127.0.0.1')
+    if (ipv4 === false) {
+      continue
+    }
+
+    const ipv6 = await canListen(port, '::')
+    if (ipv6 === false) {
+      continue
+    }
+
+    if (ipv4 === true || ipv6 === true) {
+      return port
+    }
+  }
+
+  throw new Error(`No available port starting at ${startPort}`)
+}
+
+async function waitFor(url, options = {}, timeoutMs = 30000) {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const response = await fetch(url, options)
+      if (response.ok) {
+        return true
+      }
+    } catch {
+      // ignore and retry
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+  }
+  throw new Error(`Timed out waiting for ${url}`)
+}
+
+async function assertLanding(url) {
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`Landing page returned ${response.status}`)
+  }
+  const html = await response.text()
+  if (!html.includes('data-test="api-health"')) {
+    throw new Error('Landing page missing api-health marker')
+  }
+
+  const statusMatch = html.match(
+    /data-test=["']api-health["'][^>]*data-status=["']([^"']+)["']/i,
+  )
+  const status = statusMatch?.[1]
+  if (!status) {
+    throw new Error('Landing page missing api-health status')
+  }
+  if (status !== 'ok') {
+    throw new Error(`Landing page reported API status ${status}`)
+  }
+
+  if (!html.includes('data-test="course-card"')) {
+    throw new Error('Landing page missing course cards')
+  }
+
+  const cssMatch = html.match(
+    /<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/i,
+  )
+  if (!cssMatch) {
+    throw new Error('Landing page missing stylesheet link')
+  }
+
+  const cssUrl = cssMatch[1].startsWith('http')
+    ? cssMatch[1]
+    : new URL(cssMatch[1], url).toString()
+  const cssResponse = await fetch(cssUrl)
+  if (!cssResponse.ok) {
+    throw new Error(`Stylesheet request failed with ${cssResponse.status}`)
+  }
+}
+
+async function waitForLanding(url, timeoutMs = 30000) {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    try {
+      await assertLanding(url)
+      return
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+    }
+  }
+  throw new Error('Landing page did not report API status ok')
+}
+
+async function fetchLessonPath(apiPort) {
+  const response = await fetch(`http://localhost:${apiPort}/graphql`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      query: `query SmokeCourse {
+        courses {
+          id
+          modules { lessons { id } }
+        }
+      }`,
+    }),
+  })
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch courses for lesson path')
+  }
+
+  const payload = await response.json()
+  const course = payload?.data?.courses?.[0]
+  const lesson = course?.modules?.[0]?.lessons?.[0]
+  if (!course?.id || !lesson?.id) {
+    throw new Error('No course/lesson available for smoke check')
+  }
+
+  return `/courses/${course.id}/lessons/${lesson.id}`
+}
+
+async function assertLesson(url) {
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`Lesson page returned ${response.status}`)
+  }
+  const html = await response.text()
+  if (!html.includes('data-test="lesson-view"')) {
+    throw new Error('Lesson page missing lesson view')
+  }
+  if (!html.includes('data-test="lesson-content"')) {
+    throw new Error('Lesson page missing lesson content')
+  }
+}
+
+function shutdown(processes) {
+  for (const proc of processes) {
+    if (!proc.killed) {
+      proc.kill('SIGINT')
+    }
+  }
+}
+
+console.log('[smoke] Building apps...')
+const build = run(pnpmCmd, ['build'], { shell: process.platform === 'win32' })
+
+build.on('exit', async (code) => {
+  if (code !== 0) {
+    process.exit(code ?? 1)
+  }
+
+  const reserved = new Set()
+  const apiPort = await findAvailablePort(
+    Number(process.env.API_PORT ?? 4000),
+    reserved,
+  )
+  reserved.add(apiPort)
+  const webPort = await findAvailablePort(
+    Number(process.env.WEB_PORT ?? 4100),
+    reserved,
+  )
+  reserved.add(webPort)
+
+  console.log('[smoke] Starting API and web servers...')
+  console.log(`[smoke] Ports: api=${apiPort}, web=${webPort}`)
+
+  const processes = []
+
+  const api = run('node', ['apps/api/dist/index.js'], {
+    env: { ...process.env, PORT: String(apiPort) },
+  })
+  processes.push(api)
+
+  const web = run('node', ['apps/web/docker-start.mjs'], {
+    env: {
+      ...process.env,
+      PORT: String(webPort),
+      GRAPHQL_ENDPOINT: `http://localhost:${apiPort}/graphql`,
+      VITE_GRAPHQL_ENDPOINT: `http://localhost:${apiPort}/graphql`,
+    },
+  })
+  processes.push(web)
+
+  try {
+    await waitFor(`http://localhost:${apiPort}/graphql`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query: '{ health }' }),
+    })
+    await waitFor(`http://localhost:${webPort}/learn`)
+    await waitForLanding(`http://localhost:${webPort}/learn`)
+    const lessonPath = await fetchLessonPath(apiPort)
+    await assertLesson(`http://localhost:${webPort}${lessonPath}`)
+    await waitFor(`http://localhost:${webPort}/publish`)
+    console.log('[smoke] All services responded successfully')
+  } catch (error) {
+    console.error('[smoke] Failed:', error.message)
+    shutdown(processes)
+    process.exit(1)
+  }
+
+  shutdown(processes)
+  process.exit(0)
+})
