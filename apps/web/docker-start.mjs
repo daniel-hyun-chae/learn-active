@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
@@ -19,12 +20,82 @@ if (theme) {
 }
 const distServerEntry = path.join(__dirname, 'dist', 'server', 'server.js')
 const nitroEntry = path.join(__dirname, '.output', 'server', 'index.mjs')
+const nitroNodeModules = path.join(
+  __dirname,
+  '.output',
+  'server',
+  'node_modules',
+)
+const appNodeModules = path.join(__dirname, 'node_modules')
 
-const entry = fs.existsSync(distServerEntry)
-  ? distServerEntry
-  : fs.existsSync(nitroEntry)
-    ? nitroEntry
-    : null
+function ensureNitroRuntimeNodeModules() {
+  if (!fs.existsSync(nitroEntry) || !fs.existsSync(appNodeModules)) {
+    return
+  }
+
+  try {
+    if (fs.existsSync(nitroNodeModules)) {
+      const stats = fs.lstatSync(nitroNodeModules)
+      if (stats.isSymbolicLink()) {
+        const currentTarget = fs.realpathSync(nitroNodeModules)
+        const expectedTarget = fs.realpathSync(appNodeModules)
+        if (currentTarget === expectedTarget) {
+          return
+        }
+      }
+      fs.rmSync(nitroNodeModules, { recursive: true, force: true })
+    }
+
+    fs.symlinkSync(appNodeModules, nitroNodeModules, 'dir')
+  } catch (error) {
+    console.warn(
+      `[web] Unable to prepare Nitro node_modules linkage: ${error.message}`,
+    )
+  }
+}
+
+if (fs.existsSync(nitroEntry)) {
+  ensureNitroRuntimeNodeModules()
+
+  await new Promise((resolve, reject) => {
+    const nitro = spawn(process.execPath, [nitroEntry], {
+      stdio: 'inherit',
+      env: process.env,
+    })
+
+    const shutdown = (signal) => {
+      if (!nitro.killed) {
+        nitro.kill(signal)
+      }
+    }
+
+    process.on('SIGINT', () => shutdown('SIGINT'))
+    process.on('SIGTERM', () => shutdown('SIGTERM'))
+
+    nitro.on('error', (error) => {
+      reject(error)
+    })
+
+    nitro.on('close', (code, signal) => {
+      if (signal) {
+        resolve()
+        return
+      }
+      if (code === 0) {
+        resolve()
+        return
+      }
+      reject(new Error(`Nitro server exited with code ${code}`))
+    })
+  }).catch((error) => {
+    console.error(`[web] Nitro startup failed: ${error.message}`)
+    process.exit(1)
+  })
+
+  process.exit(0)
+}
+
+const entry = fs.existsSync(distServerEntry) ? distServerEntry : null
 
 if (!entry) {
   console.error('[web] Server build output not found')

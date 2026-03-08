@@ -113,8 +113,26 @@ export class LessonInput {
   @Field(() => [ContentBlockInput])
   contents!: ContentBlockInput[]
 
+  @Field(() => [LessonContentPageInput])
+  contentPages!: LessonContentPageInput[]
+
   @Field(() => [ExerciseInput])
   exercises!: ExerciseInput[]
+}
+
+@InputType()
+export class LessonContentPageInput {
+  @Field(() => ID, { nullable: true })
+  id?: string
+
+  @Field(() => String)
+  title!: string
+
+  @Field(() => Int)
+  order!: number
+
+  @Field(() => [ContentBlockInput])
+  contents!: ContentBlockInput[]
 }
 
 @InputType()
@@ -142,9 +160,6 @@ export class CourseInput {
 
   @Field(() => String)
   description!: string
-
-  @Field(() => String)
-  language!: string
 
   @Field(() => [ModuleInput])
   modules!: ModuleInput[]

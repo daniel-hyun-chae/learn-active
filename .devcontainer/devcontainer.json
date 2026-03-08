@@ -9,19 +9,29 @@
   "containerUser": "node",
   "updateRemoteUserUID": false,
   "remoteEnv": {
-    "COREPACK_ENABLE_DOWNLOAD_PROMPT": "0"
+    "COREPACK_ENABLE_DOWNLOAD_PROMPT": "0",
+    "CI": "true",
+    "PLAYWRIGHT_BROWSERS_PATH": "/home/node/.cache/ms-playwright"
   },
-
-  "postCreateCommand": "corepack prepare pnpm@9.12.2 --activate && pnpm install && sh scripts/devcontainer-install-opencode.sh",
-  "postStartCommand": "sh -lc 'if [ ! -d node_modules/.pnpm ]; then pnpm install; fi; pnpm --filter @app/api db:migrate'",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "postCreateCommand": "corepack prepare pnpm@9.12.2 --activate && pnpm install && sh scripts/devcontainer-install-opencode.sh && PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright pnpm exec playwright install chromium",
+  "postStartCommand": "sh -lc 'if [ ! -d node_modules/.pnpm ]; then pnpm install; fi;'",
   "mounts": [
     "source=${localEnv:HOME}/.ssh,target=/home/node/.ssh,type=bind",
     "source=${localWorkspaceFolderBasename}-bashhistory,target=/commandhistory,type=volume",
     "source=${localEnv:HOME}/.netrc,target=/home/node/.netrc,type=bind",
-    "source=${localEnv:HOME}/.local/share/opencode/auth.json,target=/home/node/.local/share/opencode/auth.json,type=bind,consistency=cached"
+    "source=${localEnv:HOME}/.local/share/opencode/auth.json,target=/home/node/.local/share/opencode/auth.json,type=bind",
+    "source=${localEnv:HOME}/.config/opencode,target=/home/node/.config/opencode,type=bind",
+    "source=${localWorkspaceFolderBasename}-ms-playwright,target=/home/node/.cache/ms-playwright,type=volume",
   ],
   "customizations": {
     "vscode": {
+      "settings": {
+        "remote.autoForwardPorts": false,
+        "remote.restoreForwardedPorts": false
+      },
       "extensions": ["sst-dev.opencode"]
     }
   }

@@ -18,6 +18,20 @@ export type CourseContent = {
         imageAlt?: string
         lexicalJson?: string
       }>
+      contentPages: Array<{
+        id: string
+        title: string
+        order: number
+        contents: Array<{
+          id: string
+          type: string
+          text?: string
+          html?: string
+          imageUrl?: string
+          imageAlt?: string
+          lexicalJson?: string
+        }>
+      }>
       exercises: Array<{
         id: string
         type: string
@@ -50,7 +64,6 @@ export const courses = pgTable('courses', {
   id: text('id').primaryKey(),
   title: text('title').notNull(),
   description: text('description').notNull(),
-  language: text('language').notNull(),
   content: jsonb('content').$type<CourseContent>().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),

@@ -2,7 +2,6 @@ export type CourseDraft = {
   id?: string
   title: string
   description: string
-  language: string
   modules: ModuleDraft[]
 }
 
@@ -18,7 +17,15 @@ export type LessonDraft = {
   title: string
   order: number
   contents: ContentDraft[]
+  contentPages: LessonContentPageDraft[]
   exercises: ExerciseDraft[]
+}
+
+export type LessonContentPageDraft = {
+  id?: string
+  title: string
+  order: number
+  contents: ContentDraft[]
 }
 
 export type ContentDraft = {

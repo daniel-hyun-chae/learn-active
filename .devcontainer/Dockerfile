@@ -29,6 +29,8 @@
 ARG VARIANT="20-bullseye"
 FROM mcr.microsoft.com/vscode/devcontainers/typescript-node:0-${VARIANT}
 
+ARG PLAYWRIGHT_VERSION="1.55.0"
+
 RUN cat > /usr/share/ca-certificates/Koerber_root_CA.crt <<'EOF'
 -----BEGIN CERTIFICATE-----
 MIIFDzCCAvegAwIBAgIQQbUrSPfd961GEZiFMydNvjANBgkqhkiG9w0BAQsFADAa
@@ -89,5 +91,10 @@ RUN curl -fsSL https://opencode.ai/install -o /tmp/install_opencode.sh \
 
 RUN mkdir -p /home/node/.local/share/opencode \
     && chown -R node:node /home/node/.local
+
+RUN npx -y playwright@${PLAYWRIGHT_VERSION} install-deps chromium
+
+RUN mkdir -p /home/node/.cache/ms-playwright \
+    && chown -R node:node /home/node/.cache
 
 WORKDIR /workspaces/learn-active

@@ -17,6 +17,7 @@ New rules to capture after this change:
 - When editing devcontainer images, avoid assuming a `vscode` user unless the container user is explicitly set to `vscode`.
 - Always run `pnpm verify:setup` and `pnpm smoke:local` before handoff; if issues are found, add or update app/infra tests to prevent regressions.
 - For any reported reliability issue, add or update an app/infra test or evaluation so the failure is covered going forward.
+- Default to using subagents for exploration and multi-step work to reduce context growth, and compact context early before usage reaches 80-90%.
 
 When NOT to add a rule:
 

@@ -2,7 +2,6 @@ export type Course = {
   id: string
   title: string
   description: string
-  language: string
   modules: Module[]
 }
 
@@ -18,7 +17,15 @@ export type Lesson = {
   title: string
   order: number
   contents: ContentBlock[]
+  contentPages: LessonContentPage[]
   exercises: Exercise[]
+}
+
+export type LessonContentPage = {
+  id: string
+  title: string
+  order: number
+  contents: ContentBlock[]
 }
 
 export type ContentBlock = {

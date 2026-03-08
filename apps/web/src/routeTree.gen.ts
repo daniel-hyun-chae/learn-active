@@ -11,7 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as PublishRouteImport } from './routes/publish'
 import { Route as LearnRouteImport } from './routes/learn'
+import { Route as AuthRouteImport } from './routes/auth'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as PublishCourseIdRouteImport } from './routes/publish.$courseId'
 import { Route as CoursesCourseIdLessonsLessonIdRouteImport } from './routes/courses.$courseId.lessons.$lessonId'
 
 const PublishRoute = PublishRouteImport.update({
@@ -24,10 +26,20 @@ const LearnRoute = LearnRouteImport.update({
   path: '/learn',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const PublishCourseIdRoute = PublishCourseIdRouteImport.update({
+  id: '/$courseId',
+  path: '/$courseId',
+  getParentRoute: () => PublishRoute,
 } as any)
 const CoursesCourseIdLessonsLessonIdRoute =
   CoursesCourseIdLessonsLessonIdRouteImport.update({
@@ -38,44 +50,61 @@ const CoursesCourseIdLessonsLessonIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/learn': typeof LearnRoute
-  '/publish': typeof PublishRoute
+  '/publish': typeof PublishRouteWithChildren
+  '/publish/$courseId': typeof PublishCourseIdRoute
   '/courses/$courseId/lessons/$lessonId': typeof CoursesCourseIdLessonsLessonIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/learn': typeof LearnRoute
-  '/publish': typeof PublishRoute
+  '/publish': typeof PublishRouteWithChildren
+  '/publish/$courseId': typeof PublishCourseIdRoute
   '/courses/$courseId/lessons/$lessonId': typeof CoursesCourseIdLessonsLessonIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/learn': typeof LearnRoute
-  '/publish': typeof PublishRoute
+  '/publish': typeof PublishRouteWithChildren
+  '/publish/$courseId': typeof PublishCourseIdRoute
   '/courses/$courseId/lessons/$lessonId': typeof CoursesCourseIdLessonsLessonIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/auth'
     | '/learn'
     | '/publish'
+    | '/publish/$courseId'
     | '/courses/$courseId/lessons/$lessonId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/learn' | '/publish' | '/courses/$courseId/lessons/$lessonId'
+  to:
+    | '/'
+    | '/auth'
+    | '/learn'
+    | '/publish'
+    | '/publish/$courseId'
+    | '/courses/$courseId/lessons/$lessonId'
   id:
     | '__root__'
     | '/'
+    | '/auth'
     | '/learn'
     | '/publish'
+    | '/publish/$courseId'
     | '/courses/$courseId/lessons/$lessonId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthRoute: typeof AuthRoute
   LearnRoute: typeof LearnRoute
-  PublishRoute: typeof PublishRoute
+  PublishRoute: typeof PublishRouteWithChildren
   CoursesCourseIdLessonsLessonIdRoute: typeof CoursesCourseIdLessonsLessonIdRoute
 }
 
@@ -95,12 +124,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LearnRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/publish/$courseId': {
+      id: '/publish/$courseId'
+      path: '/$courseId'
+      fullPath: '/publish/$courseId'
+      preLoaderRoute: typeof PublishCourseIdRouteImport
+      parentRoute: typeof PublishRoute
     }
     '/courses/$courseId/lessons/$lessonId': {
       id: '/courses/$courseId/lessons/$lessonId'
@@ -112,21 +155,24 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface PublishRouteChildren {
+  PublishCourseIdRoute: typeof PublishCourseIdRoute
+}
+
+const PublishRouteChildren: PublishRouteChildren = {
+  PublishCourseIdRoute: PublishCourseIdRoute,
+}
+
+const PublishRouteWithChildren =
+  PublishRoute._addFileChildren(PublishRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthRoute: AuthRoute,
   LearnRoute: LearnRoute,
-  PublishRoute: PublishRoute,
+  PublishRoute: PublishRouteWithChildren,
   CoursesCourseIdLessonsLessonIdRoute: CoursesCourseIdLessonsLessonIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}

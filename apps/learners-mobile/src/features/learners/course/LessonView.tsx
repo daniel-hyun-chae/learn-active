@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Image,
   Pressable,
@@ -17,20 +17,109 @@ type LessonViewProps = {
   onBack: () => void
 }
 
-type Section = 'content' | 'exercise'
-
-function getFillInBlankExercise(exercises: Exercise[]) {
-  return exercises.find((exercise) => exercise.type === 'FILL_IN_THE_BLANK')
-}
+type BlockSelection =
+  | { type: 'summary' }
+  | { type: 'contentPage'; contentPageId: string }
+  | { type: 'exercise'; exerciseId: string }
 
 export function LessonView({ lesson, onBack }: LessonViewProps) {
   const { t } = useTranslation()
-  const [section, setSection] = useState<Section>('content')
+  const [selection, setSelection] = useState<BlockSelection>({
+    type: 'summary',
+  })
 
-  const fillInBlank = useMemo(
-    () => getFillInBlankExercise(lesson.exercises),
-    [lesson.exercises],
+  useEffect(() => {
+    setSelection({ type: 'summary' })
+  }, [lesson.id])
+
+  const contentPages = useMemo(
+    () => [...lesson.contentPages].sort((a, b) => a.order - b.order),
+    [lesson.contentPages],
   )
+
+  const selectedContentPage = useMemo(() => {
+    if (selection.type !== 'contentPage') {
+      return undefined
+    }
+    return lesson.contentPages.find(
+      (contentPage) => contentPage.id === selection.contentPageId,
+    )
+  }, [lesson.contentPages, selection])
+
+  const selectedExercise = useMemo(() => {
+    if (selection.type !== 'exercise') {
+      return undefined
+    }
+    return lesson.exercises.find(
+      (exercise) => exercise.id === selection.exerciseId,
+    )
+  }, [lesson.exercises, selection])
+
+  function renderContentBlocks(contents: Lesson['contents']) {
+    if (contents.length === 0) {
+      return (
+        <Text style={styles.missingText}>{t('learners.lesson.noContent')}</Text>
+      )
+    }
+
+    return (
+      <View style={styles.contentSection}>
+        {contents.map((content) => (
+          <View key={content.id} style={styles.contentCard}>
+            {content.type === 'TEXT' ? (
+              <Text style={styles.contentText}>{content.text}</Text>
+            ) : null}
+            {content.type === 'IMAGE' && content.imageUrl ? (
+              <Image
+                accessibilityLabel={
+                  content.imageAlt ?? t('learners.lesson.imageAlt')
+                }
+                source={{ uri: content.imageUrl }}
+                style={styles.contentImage}
+              />
+            ) : null}
+          </View>
+        ))}
+      </View>
+    )
+  }
+
+  function renderSelectedBlock() {
+    if (selection.type === 'summary') {
+      return renderContentBlocks(lesson.contents)
+    }
+
+    if (selection.type === 'contentPage') {
+      if (!selectedContentPage) {
+        return (
+          <Text style={styles.missingText}>
+            {t('learners.lesson.contentPageMissing')}
+          </Text>
+        )
+      }
+
+      return (
+        <View style={styles.blockSection}>
+          <Text style={styles.blockTitle}>{selectedContentPage.title}</Text>
+          {renderContentBlocks(selectedContentPage.contents)}
+        </View>
+      )
+    }
+
+    if (!selectedExercise) {
+      return (
+        <Text style={styles.missingText}>
+          {t('learners.lesson.noExercise')}
+        </Text>
+      )
+    }
+
+    return (
+      <View style={styles.blockSection}>
+        <FillInBlankExercise exercise={selectedExercise as Exercise} />
+      </View>
+    )
+  }
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -42,74 +131,82 @@ export function LessonView({ lesson, onBack }: LessonViewProps) {
         <Text style={styles.title}>{lesson.title}</Text>
       </View>
 
-      <View style={styles.tabs}>
+      <View style={styles.navigatorCard}>
+        <Text style={styles.navigatorTitle}>
+          {t('learners.structure.title')}
+        </Text>
         <Pressable
           accessibilityRole="button"
-          onPress={() => setSection('content')}
-          style={[styles.tab, section === 'content' && styles.tabActive]}
-        >
-          <Text style={styles.tabLabel}>{t('learners.lesson.contentTab')}</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          disabled={!fillInBlank}
-          onPress={() => setSection('exercise')}
+          onPress={() => setSelection({ type: 'summary' })}
           style={[
-            styles.tab,
-            section === 'exercise' && styles.tabActive,
-            !fillInBlank && styles.tabDisabled,
+            styles.navigatorItem,
+            selection.type === 'summary' && styles.navigatorItemActive,
           ]}
         >
-          <Text style={styles.tabLabel}>
-            {t('learners.lesson.exerciseTab')}
-          </Text>
+          <View>
+            <Text style={styles.navigatorLabel}>
+              {t('learners.structure.summary')}
+            </Text>
+            <Text style={styles.navigatorMeta}>
+              {t('learners.structure.lesson')}
+            </Text>
+          </View>
         </Pressable>
+
+        {contentPages.map((contentPage) => (
+          <Pressable
+            key={contentPage.id}
+            accessibilityRole="button"
+            onPress={() =>
+              setSelection({
+                type: 'contentPage',
+                contentPageId: contentPage.id,
+              })
+            }
+            style={[
+              styles.navigatorItem,
+              selection.type === 'contentPage' &&
+                selection.contentPageId === contentPage.id &&
+                styles.navigatorItemActive,
+            ]}
+          >
+            <View>
+              <Text style={styles.navigatorLabel}>{contentPage.title}</Text>
+              <Text style={styles.navigatorMeta}>
+                {t('learners.structure.contentPage')}
+              </Text>
+            </View>
+          </Pressable>
+        ))}
+
+        {lesson.exercises.map((exercise) => (
+          <Pressable
+            key={exercise.id}
+            accessibilityRole="button"
+            onPress={() =>
+              setSelection({
+                type: 'exercise',
+                exerciseId: exercise.id,
+              })
+            }
+            style={[
+              styles.navigatorItem,
+              selection.type === 'exercise' &&
+                selection.exerciseId === exercise.id &&
+                styles.navigatorItemActive,
+            ]}
+          >
+            <View>
+              <Text style={styles.navigatorLabel}>{exercise.title}</Text>
+              <Text style={styles.navigatorMeta}>
+                {t('learners.structure.exercise')}
+              </Text>
+            </View>
+          </Pressable>
+        ))}
       </View>
 
-      {section === 'content' ? (
-        <View style={styles.contentSection}>
-          {lesson.contents.map((content) => (
-            <View key={content.id} style={styles.contentCard}>
-              {content.type === 'TEXT' ? (
-                <Text style={styles.contentText}>{content.text}</Text>
-              ) : null}
-              {content.type === 'IMAGE' && content.imageUrl ? (
-                <Image
-                  accessibilityLabel={
-                    content.imageAlt ?? t('learners.lesson.imageAlt')
-                  }
-                  source={{ uri: content.imageUrl }}
-                  style={styles.contentImage}
-                />
-              ) : null}
-            </View>
-          ))}
-          {fillInBlank ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setSection('exercise')}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                pressed && styles.primaryButtonPressed,
-              ]}
-            >
-              <Text style={styles.primaryLabel}>
-                {t('learners.lesson.startExercise')}
-              </Text>
-            </Pressable>
-          ) : null}
-        </View>
-      ) : (
-        <View style={styles.exerciseSection}>
-          {fillInBlank ? (
-            <FillInBlankExercise exercise={fillInBlank} />
-          ) : (
-            <Text style={styles.noExerciseText}>
-              {t('learners.lesson.noExercise')}
-            </Text>
-          )}
-        </View>
-      )}
+      {renderSelectedBlock()}
 
       <Text style={styles.resumeHint}>{t('learners.lesson.resumeHint')}</Text>
     </ScrollView>
@@ -140,32 +237,50 @@ const styles = StyleSheet.create({
     fontWeight: String(tokens.font.weight.bold) as '700',
     color: tokens.color.text,
   },
-  tabs: {
-    flexDirection: 'row',
-    gap: tokens.spacing.sm,
-    marginBottom: tokens.spacing.md,
-  },
-  tab: {
-    paddingVertical: tokens.spacing.sm,
-    paddingHorizontal: tokens.spacing.md,
-    borderRadius: tokens.radius.sm,
+  navigatorCard: {
     borderWidth: tokens.border.width.sm,
     borderColor: tokens.color.border,
+    borderRadius: tokens.radius.md,
     backgroundColor: tokens.color.surface,
+    padding: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
+    marginBottom: tokens.spacing.md,
   },
-  tabActive: {
-    borderColor: tokens.color.accent,
-  },
-  tabDisabled: {
-    opacity: tokens.opacity.disabled,
-  },
-  tabLabel: {
+  navigatorTitle: {
     color: tokens.color.text,
     fontSize: tokens.font.size.sm,
     fontWeight: String(tokens.font.weight.medium) as '500',
   },
+  navigatorItem: {
+    borderWidth: tokens.border.width.sm,
+    borderColor: tokens.color.border,
+    borderRadius: tokens.radius.sm,
+    backgroundColor: tokens.color.background,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.xs,
+  },
+  navigatorItemActive: {
+    borderColor: tokens.color.accent,
+  },
+  navigatorLabel: {
+    color: tokens.color.text,
+    fontSize: tokens.font.size.sm,
+    fontWeight: String(tokens.font.weight.medium) as '500',
+  },
+  navigatorMeta: {
+    color: tokens.color.muted,
+    fontSize: tokens.font.size.sm,
+  },
   contentSection: {
     gap: tokens.spacing.md,
+  },
+  blockSection: {
+    gap: tokens.spacing.sm,
+  },
+  blockTitle: {
+    color: tokens.color.text,
+    fontSize: tokens.font.size.lg,
+    fontWeight: String(tokens.font.weight.bold) as '700',
   },
   contentCard: {
     padding: tokens.spacing.md,
@@ -184,29 +299,7 @@ const styles = StyleSheet.create({
     height: tokens.size.cardMin,
     borderRadius: tokens.radius.sm,
   },
-  primaryButton: {
-    alignSelf: 'flex-start',
-    backgroundColor: tokens.color.primary,
-    paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.sm,
-    borderRadius: tokens.radius.sm,
-  },
-  primaryButtonPressed: {
-    opacity: tokens.opacity.pressed,
-  },
-  primaryLabel: {
-    color: tokens.color.text,
-    fontSize: tokens.font.size.sm,
-    fontWeight: String(tokens.font.weight.medium) as '500',
-  },
-  exerciseSection: {
-    borderWidth: tokens.border.width.sm,
-    borderColor: tokens.color.border,
-    borderRadius: tokens.radius.md,
-    backgroundColor: tokens.color.surface,
-    padding: tokens.spacing.md,
-  },
-  noExerciseText: {
+  missingText: {
     color: tokens.color.muted,
     fontSize: tokens.font.size.sm,
   },

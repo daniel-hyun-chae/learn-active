@@ -6,6 +6,7 @@ import { ContentEditable } from '@lexical/react/LexicalContentEditable'
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin'
 import { ListPlugin } from '@lexical/react/LexicalListPlugin'
 import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin'
+import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import {
   $createParagraphNode,
@@ -26,6 +27,7 @@ import { TOGGLE_LINK_COMMAND } from '@lexical/link'
 type RichTextEditorProps = {
   initialText?: string
   placeholder?: string
+  testId?: string
   onChange: (value: { lexicalJson: string; text: string }) => void
 }
 
@@ -120,6 +122,7 @@ function ToolbarPlugin() {
 export function RichTextEditor({
   initialText,
   placeholder,
+  testId,
   onChange,
 }: RichTextEditorProps) {
   const theme = useMemo(
@@ -157,10 +160,16 @@ export function RichTextEditor({
     <LexicalComposer initialConfig={config}>
       <EditorInitPlugin initialText={initialText} />
       <ToolbarPlugin />
-      <div className="editor-shell">
+      <div
+        className="editor-shell"
+        data-test={testId ? `${testId}-shell` : undefined}
+      >
         <RichTextPlugin
-          contentEditable={<ContentEditable className="editor-input" />}
+          contentEditable={
+            <ContentEditable className="editor-input" data-test={testId} />
+          }
           placeholder={<div className="editor-placeholder">{placeholder}</div>}
+          ErrorBoundary={LexicalErrorBoundary}
         />
         <HistoryPlugin />
         <ListPlugin />

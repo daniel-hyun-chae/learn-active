@@ -9,13 +9,19 @@ function read(file) {
   return fs.readFileSync(path.join(root, file), 'utf8')
 }
 
-test('local startup scripts @eval(EVAL-PLATFORM-LOCAL-001,EVAL-PLATFORM-LOCAL-003,EVAL-PLATFORM-LOCAL-004,EVAL-PLATFORM-LOCAL-005)', () => {
+test('local startup scripts @eval(EVAL-PLATFORM-LOCAL-001,EVAL-PLATFORM-LOCAL-003,EVAL-PLATFORM-LOCAL-004,EVAL-PLATFORM-LOCAL-005,EVAL-PLATFORM-LOCAL-008)', () => {
   const pkg = JSON.parse(read('package.json'))
+  assert.ok(pkg.scripts.dev)
   assert.ok(pkg.scripts['smoke:local'])
   assert.ok(pkg.scripts['verify:setup'])
+  assert.ok(pkg.scripts['browser:check'])
   const verify = read('scripts/verify-startup.mjs')
   const smoke = read('scripts/smoke-local.mjs')
-  const migrate = read('apps/api/src/db/migrate.ts')
+  const browserCheck = read('scripts/browser-check.mjs')
+  const webRoot = read('apps/web/src/routes/__root.tsx')
+  const supabaseConfig = read('supabase/config.toml')
+  const baselineMigration = read('supabase/migrations/0001_initial_schema.sql')
+  const dbConnection = read('apps/api/src/db/connection.ts')
   const routeTree = read('scripts/verify-route-tree.mjs')
   const preflight = read('scripts/ensure-pnpm.mjs')
   assert.ok(verify.includes('ensure-pnpm.mjs'))
@@ -23,31 +29,116 @@ test('local startup scripts @eval(EVAL-PLATFORM-LOCAL-001,EVAL-PLATFORM-LOCAL-00
   assert.ok(preflight.includes('turbo'))
   assert.ok(preflight.includes('takeown'))
   assert.ok(preflight.includes('.ignored'))
-  assert.ok(routeTree.includes('vite /routes and ./routes aliases'))
-  assert.ok(routeTree.includes('Normalized routeTree imports'))
-  assert.ok(routeTree.includes('normalize-route-imports'))
+  assert.ok(routeTree.includes('routeTree.gen.ts missing'))
   assert.ok(routeTree.includes('routes directory missing'))
-  assert.ok(routeTree.includes('Ensuring routes proxy files'))
+  assert.ok(routeTree.includes('Missing route files'))
+  assert.ok(routeTree.includes('routeTree.gen.ts imports are valid'))
   assert.ok(preflight.includes('vite'))
   assert.ok(preflight.includes('vite.js'))
   assert.ok(preflight.includes('pnpm exec'))
   assert.ok(preflight.includes('--prod=false'))
   assert.ok(preflight.includes('ensureWorkspaceInstall'))
-  assert.ok(migrate.includes("import pg from 'pg'"))
-  assert.ok(migrate.includes('const { Pool } = pg'))
+  assert.ok(supabaseConfig.includes('[db.migrations]'))
+  assert.ok(baselineMigration.includes('create extension if not exists'))
+  assert.ok(
+    baselineMigration.includes('create table if not exists public.courses'),
+  )
+  assert.ok(
+    baselineMigration.includes('create table if not exists public.profiles'),
+  )
+  assert.ok(baselineMigration.includes('create index if not exists'))
+  assert.ok(baselineMigration.includes('create type public.profile_status'))
   assert.ok(smoke.includes('apps/api/dist/index.js'))
   assert.ok(smoke.includes('apps/web/docker-start.mjs'))
   assert.ok(smoke.includes('api-health'))
   assert.ok(smoke.includes('stylesheet'))
+  assert.ok(smoke.includes('modulepreload'))
+  assert.ok(smoke.includes('runBrowserChecks'))
+  assert.ok(browserCheck.includes('hydration'))
+  assert.ok(browserCheck.includes('router-not-found'))
+  assert.ok(webRoot.includes('notFoundComponent'))
+  assert.ok(webRoot.includes('router-not-found'))
+  assert.ok(
+    dbConnection.includes(
+      'Database unavailable, falling back to in-memory seed data',
+    ),
+  )
+  assert.ok(!dbConnection.includes('CREATE TABLE IF NOT EXISTS'))
+  assert.ok(!dbConnection.includes('ALTER TABLE courses'))
+  assert.ok(dbConnection.includes('return null'))
 })
 
-test('dev stack script @eval(EVAL-PLATFORM-LOCAL-002)', () => {
+test('dev command orchestrates setup and stack @eval(EVAL-PLATFORM-LOCAL-002)', () => {
   const pkg = JSON.parse(read('package.json'))
+  assert.ok(pkg.scripts.dev)
   assert.ok(pkg.scripts['dev:stack'])
+  const dev = read('scripts/dev.mjs')
   const devStack = read('scripts/dev-stack.mjs')
-  assert.ok(devStack.includes('@app/web'))
+  assert.ok(dev.includes('setup-local.mjs'))
+  assert.ok(dev.includes('dev-stack.mjs'))
+  assert.ok(dev.includes('Running fail-hard local setup'))
+  assert.ok(dev.includes('Starting development stack'))
   assert.ok(devStack.includes('@app/api'))
+  assert.ok(devStack.includes('webAppDir'))
   assert.ok(devStack.includes('stylesheet'))
+  assert.ok(devStack.includes('critical runtime SSR middleware errors'))
+  assert.ok(
+    devStack.includes(
+      "Cannot read properties of undefined \\(reading 'fetch'\\)",
+    ),
+  )
+  assert.ok(devStack.includes('critical TanStack Start error'))
+  assert.ok(!devStack.includes('db:migrate'))
+
+  const viteConfig = read('apps/web/vite.config.ts')
+  assert.ok(viteConfig.includes('tanstackStart'))
+  assert.ok(!viteConfig.includes('normalize-route-imports'))
+  assert.ok(!viteConfig.includes('routes-alias'))
+})
+
+test('devcontainer db helper workflow @eval(EVAL-PLATFORM-LOCAL-006,EVAL-PLATFORM-LOCAL-007,EVAL-PLATFORM-LOCAL-009)', () => {
+  const pkg = JSON.parse(read('package.json'))
+  assert.ok(pkg.scripts.dev)
+  assert.ok(pkg.scripts['db:up'])
+  assert.ok(pkg.scripts['db:status'])
+  assert.ok(pkg.scripts['db:logs'])
+  assert.ok(pkg.scripts['db:push'])
+  assert.ok(pkg.scripts['db:reset'])
+  assert.ok(pkg.scripts['setup:local'])
+
+  const dev = read('scripts/dev.mjs')
+  const dbScript = read('scripts/dev-db.mjs')
+  const setupLocal = read('scripts/setup-local.mjs')
+  const devcontainer = JSON.parse(read('.devcontainer/devcontainer.json'))
+  const dockerfile = read('.devcontainer/Dockerfile')
+  const compose = read('docker-compose.devcontainer.yml')
+  assert.ok(dev.includes('setup-local.mjs'))
+  assert.ok(dbScript.includes('supabase/config.toml'))
+  assert.ok(dbScript.includes('supabase@latest'))
+  assert.ok(dbScript.includes("'db', 'push', '--local'"))
+  assert.ok(!dbScript.includes('docker-compose.devcontainer.yml'))
+  assert.ok(dbScript.includes('Refusing to reset without --yes'))
+  assert.ok(setupLocal.includes('Waiting for database readiness'))
+  assert.ok(setupLocal.includes('Applying Supabase migrations (fail hard)'))
+  assert.ok(setupLocal.includes('switching host to host.docker.internal'))
+  assert.ok(
+    compose.includes(
+      'DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:54322/postgres',
+    ),
+  )
+  assert.ok(!compose.includes('\n  postgres:\n'))
+  assert.ok(compose.includes("shm_size: '1gb'"))
+  assert.ok(devcontainer.remoteEnv.CI)
+  assert.ok(devcontainer.remoteEnv.PLAYWRIGHT_BROWSERS_PATH)
+  assert.ok(
+    devcontainer.postCreateCommand.includes('playwright install chromium'),
+  )
+  assert.ok(
+    (devcontainer.mounts || []).some((mount) =>
+      mount.includes('target=/home/node/.cache/ms-playwright'),
+    ),
+  )
+  assert.ok(dockerfile.includes('install-deps chromium'))
 })
 
 test('devcontainer opencode auth mount @eval(EVAL-PLATFORM-DEVCONTAINER-001)', () => {

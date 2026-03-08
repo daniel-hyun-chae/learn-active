@@ -16,7 +16,8 @@ This document describes the architecture for the learning platform, including le
 - Web App (TanStack Start): combined learner + publisher experience with /learn and /publish routes, offline quiz attempts, and authoring flows.
 - Learners Mobile (Expo React Native): mobile/tablet app with offline quiz attempts and learner course flows.
 - GraphQL API (Node + GraphQL Yoga + TypeGraphQL): schema and resolver layer.
-- Postgres + Drizzle: primary data store and migrations.
+- Supabase-managed PostgreSQL + Drizzle ORM: primary data store with application access via `DATABASE_URL`.
+- Supabase SQL migrations (`supabase/migrations/*`): authoritative schema evolution workflow.
 - Shared packages: design tokens, UI, i18n, config, and utilities.
 
 ## Data Flow
@@ -25,11 +26,33 @@ This document describes the architecture for the learning platform, including le
 - Publishers create or update course content (modules, lessons, exercises) via the authoring UI and GraphQL API.
 - Web and mobile clients query the API via GraphQL and cache responses.
 
+## Authentication and Identity Flow (Phase 1)
+
+- Supabase Auth is the identity provider for web and mobile clients.
+- Supported authentication methods are Google OAuth and magic link only (no email/password UI/flow in this phase).
+- Clients bootstrap and restore auth sessions locally and attach bearer tokens to protected API requests.
+- API verifies Supabase bearer tokens via JWKS and populates `request.user.id` for protected operations.
+- Course GraphQL operations are protected behind reusable auth guard logic.
+
+### Identity data model
+
+- `auth.users` remains managed by Supabase Auth.
+- Application-level identity is represented by `public.profiles`.
+- `public.profiles.user_id` maps to `auth.users.id`.
+- A database trigger auto-syncs new auth users into `public.profiles` (including email) for app-domain usage.
+
+### Deferred to later phases
+
+- Role-based authorization (publisher/learner).
+- Organization/workspace ownership model.
+- Enterprise SSO integrations.
+- Advanced RLS authorization policy design.
+
 ## Deployment and Operations
 
 - The web app is built and deployed as a single service.
 - Mobile app ships via platform stores with OTA updates where possible.
-- API runs as a standalone service with Postgres.
+- API runs as a standalone service connected to PostgreSQL via `DATABASE_URL` (Supabase-hosted in production, Supabase local stack in development).
 
 ## Cross-Cutting Concerns
 

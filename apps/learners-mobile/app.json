@@ -2,6 +2,7 @@
   "expo": {
     "name": "Learners Mobile",
     "slug": "learners-mobile",
+    "scheme": "learners-mobile",
     "version": "0.0.0",
     "orientation": "default",
     "sdkVersion": "50.0.0",

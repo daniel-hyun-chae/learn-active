@@ -131,8 +131,26 @@ export class Lesson {
   @Field(() => [ContentBlock])
   contents!: ContentBlock[]
 
+  @Field(() => [LessonContentPage])
+  contentPages!: LessonContentPage[]
+
   @Field(() => [Exercise])
   exercises!: Exercise[]
+}
+
+@ObjectType()
+export class LessonContentPage {
+  @Field(() => ID)
+  id!: string
+
+  @Field(() => String)
+  title!: string
+
+  @Field(() => Int)
+  order!: number
+
+  @Field(() => [ContentBlock])
+  contents!: ContentBlock[]
 }
 
 @ObjectType()
@@ -160,9 +178,6 @@ export class Course {
 
   @Field(() => String)
   description!: string
-
-  @Field(() => String)
-  language!: string
 
   @Field(() => [Module])
   modules!: Module[]

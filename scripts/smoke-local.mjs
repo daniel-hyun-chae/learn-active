@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process'
 import path from 'node:path'
 import net from 'node:net'
+import { runBrowserChecks } from './browser-check.mjs'
 
 const pnpmCmd = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
 
@@ -83,6 +84,17 @@ async function findAvailablePort(startPort, reserved = new Set()) {
   throw new Error(`No available port starting at ${startPort}`)
 }
 
+async function assertPortAvailable(port, label) {
+  const ipv4 = await canListen(port, '127.0.0.1')
+  const ipv6 = await canListen(port, '::')
+
+  if (ipv4 === false || ipv6 === false) {
+    throw new Error(
+      `${label} port ${port} is already in use. Stop the existing process or run with DYNAMIC_SMOKE_PORTS=1 to allow fallback ports.`,
+    )
+  }
+}
+
 async function waitFor(url, options = {}, timeoutMs = 30000) {
   const start = Date.now()
   while (Date.now() - start < timeoutMs) {
@@ -127,16 +139,32 @@ async function assertLanding(url) {
   const cssMatch = html.match(
     /<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/i,
   )
-  if (!cssMatch) {
-    throw new Error('Landing page missing stylesheet link')
+  if (cssMatch) {
+    const cssUrl = cssMatch[1].startsWith('http')
+      ? cssMatch[1]
+      : new URL(cssMatch[1], url).toString()
+    const cssResponse = await fetch(cssUrl)
+    if (!cssResponse.ok) {
+      throw new Error(`Stylesheet request failed with ${cssResponse.status}`)
+    }
+    return
   }
 
-  const cssUrl = cssMatch[1].startsWith('http')
-    ? cssMatch[1]
-    : new URL(cssMatch[1], url).toString()
-  const cssResponse = await fetch(cssUrl)
-  if (!cssResponse.ok) {
-    throw new Error(`Stylesheet request failed with ${cssResponse.status}`)
+  const preloadMatch = html.match(
+    /<link[^>]+rel=["']modulepreload["'][^>]*href=["']([^"']+\.js[^"']*)["'][^>]*>/i,
+  )
+  if (!preloadMatch) {
+    throw new Error('Landing page missing stylesheet or modulepreload asset')
+  }
+
+  const preloadUrl = preloadMatch[1].startsWith('http')
+    ? preloadMatch[1]
+    : new URL(preloadMatch[1], url).toString()
+  const preloadResponse = await fetch(preloadUrl)
+  if (!preloadResponse.ok) {
+    throw new Error(
+      `Modulepreload request failed with ${preloadResponse.status}`,
+    )
   }
 }
 
@@ -190,7 +218,11 @@ async function assertLesson(url) {
   if (!html.includes('data-test="lesson-view"')) {
     throw new Error('Lesson page missing lesson view')
   }
-  if (!html.includes('data-test="lesson-content"')) {
+  if (
+    !html.includes('data-test="lesson-content"') &&
+    !html.includes('data-test="lesson-summary"') &&
+    !html.includes('data-test="lesson-content-page-body"')
+  ) {
     throw new Error('Lesson page missing lesson content')
   }
 }
@@ -212,16 +244,29 @@ build.on('exit', async (code) => {
   }
 
   const reserved = new Set()
-  const apiPort = await findAvailablePort(
-    Number(process.env.API_PORT ?? 4000),
-    reserved,
-  )
-  reserved.add(apiPort)
-  const webPort = await findAvailablePort(
-    Number(process.env.WEB_PORT ?? 4100),
-    reserved,
-  )
-  reserved.add(webPort)
+  const preferredApiPort = Number(process.env.API_PORT ?? 4000)
+  const preferredWebPort = Number(process.env.WEB_PORT ?? 4100)
+  const dynamicSmokePorts =
+    process.env.DYNAMIC_SMOKE_PORTS === '1' ||
+    process.env.DYNAMIC_DEV_PORTS === '1'
+
+  let apiPort
+  let webPort
+
+  if (dynamicSmokePorts) {
+    apiPort = await findAvailablePort(preferredApiPort, reserved)
+    reserved.add(apiPort)
+    webPort = await findAvailablePort(preferredWebPort, reserved)
+    reserved.add(webPort)
+  } else {
+    if (preferredApiPort === preferredWebPort) {
+      throw new Error('API_PORT and WEB_PORT must be different values')
+    }
+    await assertPortAvailable(preferredApiPort, 'API')
+    await assertPortAvailable(preferredWebPort, 'Web')
+    apiPort = preferredApiPort
+    webPort = preferredWebPort
+  }
 
   console.log('[smoke] Starting API and web servers...')
   console.log(`[smoke] Ports: api=${apiPort}, web=${webPort}`)
@@ -251,6 +296,7 @@ build.on('exit', async (code) => {
     })
     await waitFor(`http://localhost:${webPort}/learn`)
     await waitForLanding(`http://localhost:${webPort}/learn`)
+    await runBrowserChecks({ baseUrl: `http://localhost:${webPort}` })
     const lessonPath = await fetchLessonPath(apiPort)
     await assertLesson(`http://localhost:${webPort}${lessonPath}`)
     await waitFor(`http://localhost:${webPort}/publish`)

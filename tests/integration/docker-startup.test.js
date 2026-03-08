@@ -12,11 +12,13 @@ function read(file) {
 test('docker compose startup @eval(EVAL-PLATFORM-DOCKER-001)', () => {
   const compose = read('docker-compose.yml')
 
-  assert.ok(compose.includes('postgres:'))
   assert.ok(compose.includes('api:'))
   assert.ok(compose.includes('web:'))
+  assert.ok(!compose.includes('\n  postgres:\n'))
   assert.ok(compose.includes('4100:4100'))
   assert.ok(compose.includes('4000:4000'))
+  assert.ok(compose.includes('DATABASE_URL'))
+  assert.ok(compose.includes('host.docker.internal:54322'))
   assert.ok(compose.includes('depends_on'))
   assert.ok(compose.includes('healthcheck'))
 })

@@ -1,27 +1,59 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { tokenVars } from '@app/shared-tokens'
 import { Surface } from '@app/shared-ui'
-import type { Lesson } from './types'
+import type { ContentBlock, Lesson } from './types'
 import { FillInBlankExercise } from './exercises/FillInBlankExercise'
+
+export type LessonViewSelection =
+  | { type: 'summary' }
+  | { type: 'contentPage'; contentPageId: string }
+  | { type: 'exercise'; exerciseId: string }
 
 type LessonViewProps = {
   lesson: Lesson
+  selection?: LessonViewSelection
 }
 
-export function LessonView({ lesson }: LessonViewProps) {
-  const { t } = useTranslation()
-  const [activeSection, setActiveSection] = useState<'content' | 'exercise'>(
-    'content',
+function renderContentBlocks(contents: ContentBlock[], testId: string) {
+  return (
+    <div className="lesson-content" data-test={testId}>
+      {contents.map((content) => (
+        <Surface key={content.id} className="lesson-content-block">
+          {content.type === 'TEXT' ? (
+            <p className="lesson-text">{content.text}</p>
+          ) : (
+            <img
+              src={content.imageUrl}
+              alt={content.imageAlt ?? ''}
+              className="lesson-image"
+            />
+          )}
+        </Surface>
+      ))}
+    </div>
   )
+}
 
-  const fillInBlank = useMemo(
-    () =>
-      lesson.exercises.find(
-        (exercise) => exercise.type === 'FILL_IN_THE_BLANK',
-      ),
-    [lesson.exercises],
-  )
+export function LessonView({
+  lesson,
+  selection = { type: 'summary' },
+}: LessonViewProps) {
+  const { t } = useTranslation()
+
+  const selectedContentPage = useMemo(() => {
+    if (selection.type !== 'contentPage') return undefined
+    return lesson.contentPages.find(
+      (page) => page.id === selection.contentPageId,
+    )
+  }, [lesson.contentPages, selection])
+
+  const selectedExercise = useMemo(() => {
+    if (selection.type !== 'exercise') return undefined
+    return lesson.exercises.find(
+      (exercise) => exercise.id === selection.exerciseId,
+    )
+  }, [lesson.exercises, selection])
 
   return (
     <section className="lesson-view" data-test="lesson-view">
@@ -30,60 +62,31 @@ export function LessonView({ lesson }: LessonViewProps) {
           <p className="muted">{t('learners.lesson.subtitle')}</p>
           <h2>{lesson.title}</h2>
         </div>
-        <div className="lesson-tabs">
-          <button
-            type="button"
-            className={activeSection === 'content' ? 'tab active' : 'tab'}
-            onClick={() => setActiveSection('content')}
-          >
-            {t('learners.lesson.contentTab')}
-          </button>
-          <button
-            type="button"
-            className={activeSection === 'exercise' ? 'tab active' : 'tab'}
-            onClick={() => setActiveSection('exercise')}
-            disabled={!fillInBlank}
-          >
-            {t('learners.lesson.exerciseTab')}
-          </button>
-        </div>
       </div>
 
-      {activeSection === 'content' ? (
-        <div className="lesson-content" data-test="lesson-content">
-          {lesson.contents.map((content) => (
-            <Surface key={content.id} className="lesson-content-block">
-              {content.type === 'TEXT' ? (
-                <p className="lesson-text">{content.text}</p>
-              ) : (
-                <img
-                  src={content.imageUrl}
-                  alt={content.imageAlt ?? ''}
-                  className="lesson-image"
-                />
-              )}
-            </Surface>
-          ))}
-          {fillInBlank ? (
-            <div className="lesson-next">
-              <button
-                type="button"
-                className="lesson-next-button"
-                data-test="lesson-start-exercise"
-                onClick={() => setActiveSection('exercise')}
-              >
-                {t('learners.lesson.startExercise')}
-              </button>
-            </div>
-          ) : null}
+      {selection.type === 'summary'
+        ? renderContentBlocks(lesson.contents, 'lesson-summary')
+        : null}
+
+      {selection.type === 'contentPage' && selectedContentPage ? (
+        <div data-test="lesson-content-page">
+          <h3>{selectedContentPage.title}</h3>
+          {renderContentBlocks(
+            selectedContentPage.contents,
+            'lesson-content-page-body',
+          )}
         </div>
       ) : null}
 
-      {activeSection === 'exercise' && fillInBlank ? (
-        <FillInBlankExercise exercise={fillInBlank} />
+      {selection.type === 'contentPage' && !selectedContentPage ? (
+        <p className="muted">{t('learners.lesson.contentPageMissing')}</p>
       ) : null}
 
-      {!fillInBlank && activeSection === 'exercise' ? (
+      {selection.type === 'exercise' && selectedExercise ? (
+        <FillInBlankExercise exercise={selectedExercise} />
+      ) : null}
+
+      {selection.type === 'exercise' && !selectedExercise ? (
         <p className="muted">{t('learners.lesson.noExercise')}</p>
       ) : null}
 

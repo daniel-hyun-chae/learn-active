@@ -7,6 +7,16 @@ type GraphQLPayload<T> = {
   errors?: GraphQLError[]
 }
 
+type AccessTokenProvider = () => Promise<string | null> | string | null
+
+let accessTokenProvider: AccessTokenProvider | null = null
+
+export function setGraphQLAccessTokenProvider(
+  provider: AccessTokenProvider | null,
+) {
+  accessTokenProvider = provider
+}
+
 function getRuntimeEndpoint() {
   const env = (
     globalThis as { process?: { env?: Record<string, string | undefined> } }
@@ -22,9 +32,18 @@ export async function fetchGraphQL<T>(
   query: string,
   variables?: Record<string, unknown>,
 ) {
+  const accessToken = accessTokenProvider ? await accessTokenProvider() : null
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+  }
+
+  if (accessToken) {
+    headers.authorization = `Bearer ${accessToken}`
+  }
+
   const response = await fetch(getRuntimeEndpoint(), {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers,
     body: JSON.stringify({ query, variables }),
   })
 

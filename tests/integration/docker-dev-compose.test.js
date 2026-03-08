@@ -24,11 +24,13 @@ test('devcontainer compose wiring @eval(EVAL-PLATFORM-DEVCONTAINER-001)', () => 
   )
   assert.ok(devcontainer.forwardPorts.includes(4000))
   assert.ok(devcontainer.forwardPorts.includes(4100))
-  assert.ok(devcontainer.postStartCommand.includes('db:migrate'))
+  assert.equal(typeof devcontainer.postStartCommand, 'string')
+  assert.ok(devcontainer.postStartCommand.includes('pnpm install'))
+  assert.ok(!devcontainer.postStartCommand.includes('db:migrate'))
 
   assert.ok(compose.includes('services:'))
-  assert.ok(compose.includes('postgres:'))
   assert.ok(compose.includes('dev:'))
+  assert.ok(!compose.includes('\n  postgres:\n'))
 
   assert.ok(compose.includes('4000:4000'))
   assert.ok(compose.includes('4100:4100'))
@@ -36,8 +38,8 @@ test('devcontainer compose wiring @eval(EVAL-PLATFORM-DEVCONTAINER-001)', () => 
   assert.ok(compose.includes('CHOKIDAR_USEPOLLING'))
   assert.ok(compose.includes('WATCHPACK_POLLING'))
   assert.ok(compose.includes('DATABASE_URL'))
+  assert.ok(compose.includes('host.docker.internal:54322'))
 
   assert.ok(compose.includes('volumes:'))
-  assert.ok(compose.includes('pgdata:'))
   assert.ok(compose.includes('dev_node_modules:'))
 })

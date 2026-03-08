@@ -5,6 +5,7 @@ import type {
   ExerciseDraft,
   ExerciseStepDraft,
   LessonDraft,
+  LessonContentPageDraft,
   ModuleDraft,
 } from './types'
 
@@ -102,7 +103,6 @@ export function emptyCourse(t: (key: string) => string): CourseDraft {
   return {
     title: '',
     description: '',
-    language: 'German',
     modules: [
       {
         id: createId('module'),
@@ -114,6 +114,7 @@ export function emptyCourse(t: (key: string) => string): CourseDraft {
             title: t('publishers.lesson.newTitle'),
             order: 1,
             contents: [],
+            contentPages: [],
             exercises: [],
           },
         ],
@@ -138,6 +139,20 @@ export function normalizeDraft(course: CourseDraft): CourseDraft {
             (content: ContentDraft, contentIndex: number) => ({
               ...content,
               id: content.id ?? createId(`content-${contentIndex}`),
+            }),
+          ),
+          contentPages: (lesson.contentPages ?? []).map(
+            (page: LessonContentPageDraft, pageIndex: number) => ({
+              ...page,
+              id: page.id ?? createId(`content-page-${pageIndex}`),
+              order: page.order ?? pageIndex + 1,
+              contents: page.contents.map(
+                (content: ContentDraft, contentIndex: number) => ({
+                  ...content,
+                  id:
+                    content.id ?? createId(`content-page-item-${contentIndex}`),
+                }),
+              ),
             }),
           ),
           exercises: lesson.exercises.map(
@@ -183,5 +198,148 @@ export function reindexLessons(lessons: LessonDraft[]) {
   return lessons.map((lesson, index) => ({
     ...lesson,
     order: index + 1,
+    contentPages: reindexContentPages(lesson.contentPages ?? []),
   }))
+}
+
+export function reindexContentPages(contentPages: LessonContentPageDraft[]) {
+  return contentPages.map((page, index) => ({
+    ...page,
+    order: index + 1,
+  }))
+}
+
+export type CourseInputPayload = {
+  id?: string
+  title: string
+  description: string
+  modules: Array<{
+    id?: string
+    title: string
+    order: number
+    lessons: Array<{
+      id?: string
+      title: string
+      order: number
+      contents: Array<{
+        id?: string
+        type: 'TEXT' | 'IMAGE'
+        text?: string
+        html?: string
+        imageUrl?: string
+        imageAlt?: string
+        lexicalJson?: string
+      }>
+      contentPages: Array<{
+        id?: string
+        title: string
+        order: number
+        contents: Array<{
+          id?: string
+          type: 'TEXT' | 'IMAGE'
+          text?: string
+          html?: string
+          imageUrl?: string
+          imageAlt?: string
+          lexicalJson?: string
+        }>
+      }>
+      exercises: Array<{
+        id?: string
+        type: 'FILL_IN_THE_BLANK'
+        title: string
+        instructions?: string
+        steps: Array<{
+          id?: string
+          order: number
+          prompt: string
+          threadId: string
+          threadTitle?: string
+          segments: Array<{
+            type: 'TEXT' | 'BLANK'
+            text?: string
+            blankId?: string
+          }>
+          blanks: Array<{
+            id?: string
+            correct: string
+            variant: 'TYPING' | 'OPTIONS'
+            options?: string[]
+          }>
+        }>
+      }>
+    }>
+  }>
+}
+
+export function toCourseInput(course: CourseDraft): CourseInputPayload {
+  const normalized = normalizeDraft(course)
+  return {
+    id: normalized.id,
+    title: normalized.title,
+    description: normalized.description,
+    modules: normalized.modules.map((module) => ({
+      id: module.id,
+      title: module.title,
+      order: module.order,
+      lessons: module.lessons.map((lesson) => ({
+        id: lesson.id,
+        title: lesson.title,
+        order: lesson.order,
+        contents: lesson.contents.map((content) => ({
+          id: content.id,
+          type: content.type,
+          text: content.text,
+          html: content.html,
+          imageUrl: content.imageUrl,
+          imageAlt: content.imageAlt,
+          lexicalJson: content.lexicalJson,
+        })),
+        contentPages: (lesson.contentPages ?? []).map((page) => ({
+          id: page.id,
+          title: page.title,
+          order: page.order,
+          contents: page.contents.map((content) => ({
+            id: content.id,
+            type: content.type,
+            text: content.text,
+            html: content.html,
+            imageUrl: content.imageUrl,
+            imageAlt: content.imageAlt,
+            lexicalJson: content.lexicalJson,
+          })),
+        })),
+        exercises: lesson.exercises.map((exercise) => ({
+          id: exercise.id,
+          type: exercise.type,
+          title: exercise.title,
+          instructions: exercise.instructions,
+          steps: exercise.steps.map((step) => {
+            const templateValue =
+              typeof step.template === 'string' ? step.template : undefined
+            const safeTemplate =
+              templateValue ?? segmentsToBlankTemplate(step.segments) ?? ''
+            const blanks = syncBlanks(safeTemplate, step.blanks)
+            return {
+              id: step.id,
+              order: step.order,
+              prompt: step.prompt,
+              threadId: step.threadId,
+              threadTitle: step.threadTitle,
+              segments: blankTemplateToSegments(safeTemplate, blanks),
+              blanks: blanks.map((blank) => ({
+                id: blank.id,
+                correct: blank.correct,
+                variant: blank.variant,
+                options:
+                  blank.variant === 'OPTIONS'
+                    ? parseBlankOptions(blank.options)
+                    : undefined,
+              })),
+            }
+          }),
+        })),
+      })),
+    })),
+  }
 }

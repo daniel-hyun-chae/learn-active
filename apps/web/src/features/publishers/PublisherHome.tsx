@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { tokenVars } from '@app/shared-tokens'
 import { PrimaryButton, Surface } from '@app/shared-ui'
@@ -9,6 +10,7 @@ import type {
   ExerciseBlankDraft,
   ExerciseDraft,
   ExerciseStepDraft,
+  LessonContentPageDraft,
   LessonDraft,
   ModuleDraft,
 } from './types'
@@ -17,21 +19,22 @@ import {
   BLANK_TOKEN,
   blankTemplateToSegments,
   createId,
-  emptyCourse,
-  normalizeDraft,
   normalizeBlankOptions,
+  normalizeDraft,
   parseBlankOptions,
+  reindexContentPages,
   reindexLessons,
   reindexModules,
   segmentsToBlankTemplate,
   syncBlanks,
+  toCourseInput,
 } from './publisher-utils'
 import type { Exercise, Lesson } from '../learners/course/types'
 import { LessonView } from '../learners/course/LessonView'
 import { FillInBlankExercise } from '../learners/course/exercises/FillInBlankExercise'
 
 type PublisherHomeProps = {
-  courses: CourseDraft[]
+  course: CourseDraft
 }
 
 type Status = { type: 'idle' | 'saving' | 'saved' | 'error'; message?: string }
@@ -41,39 +44,26 @@ type Selection =
   | { type: 'module'; moduleId: string }
   | { type: 'lesson'; moduleId: string; lessonId: string }
   | {
+      type: 'contentPage'
+      moduleId: string
+      lessonId: string
+      pageId: string
+    }
+  | {
       type: 'exercise'
       moduleId: string
       lessonId: string
       exerciseId: string
     }
 
-type PreviewMode = 'edit' | 'preview'
-type PreviewScope = 'course' | 'selection'
-
-type DragState =
-  | { type: 'module'; moduleId: string }
-  | { type: 'lesson'; moduleId: string; lessonId: string }
-  | { type: 'exercise'; moduleId: string; lessonId: string; exerciseId: string }
-
-function reorderById<T extends { id?: string }>(
-  items: T[],
-  fromId: string,
-  toId: string,
-) {
-  const fromIndex = items.findIndex((item) => item.id === fromId)
-  const toIndex = items.findIndex((item) => item.id === toId)
-  if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return items
-  const next = [...items]
-  const [moved] = next.splice(fromIndex, 1)
-  next.splice(toIndex, 0, moved)
-  return next
-}
+type PanelKey = 'structure' | 'designer' | 'preview'
 
 function toLearnerExercise(exercise: ExerciseDraft): Exercise {
   return {
     id: exercise.id ?? createId('exercise'),
     type: 'FILL_IN_THE_BLANK',
     title: exercise.title,
+    instructions: exercise.instructions,
     steps: exercise.steps.map((step) => {
       const templateValue =
         typeof step.template === 'string' ? step.template : undefined
@@ -113,92 +103,130 @@ function toLearnerLesson(lesson: LessonDraft): Lesson {
       imageUrl: content.imageUrl,
       imageAlt: content.imageAlt,
     })),
+    contentPages: (lesson.contentPages ?? [])
+      .sort((a, b) => a.order - b.order)
+      .map((page) => ({
+        id: page.id ?? createId('content-page'),
+        title: page.title,
+        order: page.order,
+        contents: page.contents.map((content) => ({
+          id: content.id ?? createId('content'),
+          type: content.type,
+          text: content.text ?? '',
+          imageUrl: content.imageUrl,
+          imageAlt: content.imageAlt,
+        })),
+      })),
     exercises: lesson.exercises.map(toLearnerExercise),
   }
 }
 
-export function PublisherHome({ courses }: PublisherHomeProps) {
+export function PublisherHome({ course }: PublisherHomeProps) {
   const { t } = useTranslation()
-  const [selectedId, setSelectedId] = useState<string | undefined>(
-    courses[0]?.id,
-  )
-  const [draft, setDraft] = useState<CourseDraft>(() =>
-    normalizeDraft(courses[0] ?? emptyCourse(t)),
-  )
+  const [draft, setDraft] = useState<CourseDraft>(() => normalizeDraft(course))
   const [status, setStatus] = useState<Status>({ type: 'idle' })
   const [selection, setSelection] = useState<Selection>({ type: 'course' })
-  const [previewMode, setPreviewMode] = useState<PreviewMode>('edit')
-  const [previewScope, setPreviewScope] = useState<PreviewScope>('course')
-  const [dragState, setDragState] = useState<DragState | null>(null)
-  const [moveTarget, setMoveTarget] = useState<{
-    moduleId?: string
-    lessonId?: string
-  }>({})
-
-  const courseOptions = useMemo<CourseDraft[]>(() => courses, [courses])
+  const [collapsedPanels, setCollapsedPanels] = useState<
+    Record<PanelKey, boolean>
+  >({
+    structure: false,
+    designer: false,
+    preview: false,
+  })
 
   useEffect(() => {
-    if (selection.type === 'lesson') {
-      setMoveTarget({ moduleId: selection.moduleId })
-    }
-    if (selection.type === 'exercise') {
-      setMoveTarget({
-        moduleId: selection.moduleId,
-        lessonId: selection.lessonId,
-      })
-    }
-    if (selection.type === 'course' || selection.type === 'module') {
-      setMoveTarget({})
-    }
-  }, [selection])
+    setDraft(normalizeDraft(course))
+    setSelection({ type: 'course' })
+    setStatus({ type: 'idle' })
+  }, [course])
 
   const selectedModule = useMemo(() => {
     if (selection.type === 'module') {
-      return draft.modules.find(
-        (module: ModuleDraft) => module.id === selection.moduleId,
-      )
+      return draft.modules.find((module) => module.id === selection.moduleId)
     }
-    if (selection.type === 'lesson' || selection.type === 'exercise') {
-      return draft.modules.find(
-        (module: ModuleDraft) => module.id === selection.moduleId,
-      )
+    if (
+      selection.type === 'lesson' ||
+      selection.type === 'contentPage' ||
+      selection.type === 'exercise'
+    ) {
+      return draft.modules.find((module) => module.id === selection.moduleId)
     }
     return undefined
   }, [draft.modules, selection])
 
   const selectedLesson = useMemo(() => {
-    if (selection.type === 'lesson' || selection.type === 'exercise') {
+    if (
+      selection.type === 'lesson' ||
+      selection.type === 'contentPage' ||
+      selection.type === 'exercise'
+    ) {
       return selectedModule?.lessons.find(
-        (lesson: LessonDraft) => lesson.id === selection.lessonId,
+        (lesson) => lesson.id === selection.lessonId,
       )
     }
     return undefined
   }, [selectedModule, selection])
 
-  const selectedExercise = useMemo(() => {
-    if (selection.type === 'exercise') {
-      return selectedLesson?.exercises.find(
-        (exercise: ExerciseDraft) => exercise.id === selection.exerciseId,
-      )
-    }
-    return undefined
-  }, [selectedLesson, selection])
+  const selectedContentPage = useMemo(() => {
+    if (selection.type !== 'contentPage') return undefined
+    return selectedLesson?.contentPages.find(
+      (page) => page.id === selection.pageId,
+    )
+  }, [selection, selectedLesson])
 
-  function selectCourse(courseId: string) {
-    const course = courses.find((item) => item.id === courseId)
-    if (course) {
-      setSelectedId(courseId)
-      setDraft(normalizeDraft(course))
-      setSelection({ type: 'course' })
+  const selectedExercise = useMemo(() => {
+    if (selection.type !== 'exercise') return undefined
+    return selectedLesson?.exercises.find(
+      (exercise) => exercise.id === selection.exerciseId,
+    )
+  }, [selection, selectedLesson])
+
+  const previewLessons = useMemo(() => {
+    const orderedModules = [...draft.modules].sort((a, b) => a.order - b.order)
+    return orderedModules.flatMap((module) =>
+      [...module.lessons]
+        .sort((a, b) => a.order - b.order)
+        .map(toLearnerLesson),
+    )
+  }, [draft.modules])
+
+  const selectionLabel = useMemo(() => {
+    if (selection.type === 'course') return t('publishers.selection.course')
+    if (selection.type === 'module') return t('publishers.selection.module')
+    if (selection.type === 'lesson') return t('publishers.selection.lesson')
+    if (selection.type === 'contentPage') {
+      return t('publishers.selection.contentPage')
     }
+    return t('publishers.selection.exercise')
+  }, [selection, t])
+
+  const layoutClassName = useMemo(() => {
+    const classes = ['publisher-layout', 'publisher-layout-parallel']
+    if (collapsedPanels.structure) {
+      classes.push('publisher-layout-structure-collapsed')
+    }
+    if (collapsedPanels.designer) {
+      classes.push('publisher-layout-designer-collapsed')
+    }
+    if (collapsedPanels.preview) {
+      classes.push('publisher-layout-preview-collapsed')
+    }
+    return classes.join(' ')
+  }, [collapsedPanels])
+
+  function togglePanel(panel: PanelKey) {
+    setCollapsedPanels((prev) => ({
+      ...prev,
+      [panel]: !prev[panel],
+    }))
   }
 
   function updateDraft(partial: Partial<CourseDraft>) {
-    setDraft((prev: CourseDraft) => ({ ...prev, ...partial }))
+    setDraft((prev) => ({ ...prev, ...partial }))
   }
 
   function updateModules(updater: (modules: ModuleDraft[]) => ModuleDraft[]) {
-    setDraft((prev: CourseDraft) => ({
+    setDraft((prev) => ({
       ...prev,
       modules: reindexModules(updater(prev.modules)),
     }))
@@ -231,6 +259,22 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
     )
   }
 
+  function updateContentPageById(
+    moduleId: string,
+    lessonId: string,
+    pageId: string,
+    updater: (page: LessonContentPageDraft) => LessonContentPageDraft,
+  ) {
+    updateLessonById(moduleId, lessonId, (lesson) => {
+      const contentPages = reindexContentPages(
+        (lesson.contentPages ?? []).map((page) =>
+          page.id === pageId ? updater(page) : page,
+        ),
+      )
+      return { ...lesson, contentPages }
+    })
+  }
+
   function updateExerciseById(
     moduleId: string,
     lessonId: string,
@@ -249,10 +293,47 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
     setStatus({ type: 'saving' })
     try {
       const data = await fetchGraphQL<{ seedSampleCourse: CourseDraft }>(
-        `mutation SeedSampleCourse { seedSampleCourse { id title description language modules { id title order lessons { id title order contents { id type text imageUrl imageAlt lexicalJson } exercises { id type title instructions steps { id order prompt threadId threadTitle segments { type text blankId } blanks { id correct variant options } } } } } } }`,
+        `mutation SeedSampleCourse {
+          seedSampleCourse {
+            id
+            title
+            description
+            modules {
+              id
+              title
+              order
+              lessons {
+                id
+                title
+                order
+                contents { id type text imageUrl imageAlt lexicalJson }
+                contentPages {
+                  id
+                  title
+                  order
+                  contents { id type text imageUrl imageAlt lexicalJson }
+                }
+                exercises {
+                  id
+                  type
+                  title
+                  instructions
+                  steps {
+                    id
+                    order
+                    prompt
+                    threadId
+                    threadTitle
+                    segments { type text blankId }
+                    blanks { id correct variant options }
+                  }
+                }
+              }
+            }
+          }
+        }`,
       )
       setDraft(normalizeDraft(data.seedSampleCourse))
-      setSelectedId(data.seedSampleCourse.id)
       setSelection({ type: 'course' })
       setStatus({ type: 'saved', message: t('publishers.status.seeded') })
     } catch (error) {
@@ -263,70 +344,13 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
   async function handleSave() {
     setStatus({ type: 'saving' })
     try {
-      const normalized = normalizeDraft(draft)
-      const input = {
-        id: normalized.id,
-        title: normalized.title,
-        description: normalized.description,
-        language: normalized.language,
-        modules: normalized.modules.map((module: ModuleDraft) => ({
-          id: module.id,
-          title: module.title,
-          order: module.order,
-          lessons: module.lessons.map((lesson: LessonDraft) => ({
-            id: lesson.id,
-            title: lesson.title,
-            order: lesson.order,
-            contents: lesson.contents.map((content: ContentDraft) => ({
-              id: content.id,
-              type: content.type,
-              text: content.text,
-              html: content.html,
-              imageUrl: content.imageUrl,
-              imageAlt: content.imageAlt,
-              lexicalJson: content.lexicalJson,
-            })),
-            exercises: lesson.exercises.map((exercise: ExerciseDraft) => ({
-              id: exercise.id,
-              type: exercise.type,
-              title: exercise.title,
-              instructions: exercise.instructions,
-              steps: exercise.steps.map((step: ExerciseStepDraft) => {
-                const templateValue =
-                  typeof step.template === 'string' ? step.template : undefined
-                const safeTemplate =
-                  templateValue ?? segmentsToBlankTemplate(step.segments) ?? ''
-                const blanks = syncBlanks(safeTemplate, step.blanks)
-                return {
-                  id: step.id,
-                  order: step.order,
-                  prompt: step.prompt,
-                  threadId: step.threadId,
-                  threadTitle: step.threadTitle,
-                  segments: blankTemplateToSegments(safeTemplate, blanks),
-                  blanks: blanks.map((blank) => ({
-                    id: blank.id,
-                    correct: blank.correct,
-                    variant: blank.variant,
-                    options:
-                      blank.variant === 'OPTIONS'
-                        ? parseBlankOptions(blank.options)
-                        : undefined,
-                  })),
-                }
-              }),
-            })),
-          })),
-        })),
-      }
-
+      const input = toCourseInput(draft)
       const data = await fetchGraphQL<{ upsertCourse: CourseDraft }>(
         `mutation SaveCourse($input: CourseInput!) {
           upsertCourse(input: $input) {
             id
             title
             description
-            language
             modules {
               id
               title
@@ -336,6 +360,12 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
                 title
                 order
                 contents { id type text imageUrl imageAlt lexicalJson }
+                contentPages {
+                  id
+                  title
+                  order
+                  contents { id type text imageUrl imageAlt lexicalJson }
+                }
                 exercises {
                   id
                   type
@@ -358,7 +388,6 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
         { input },
       )
       setDraft(normalizeDraft(data.upsertCourse))
-      setSelectedId(data.upsertCourse.id)
       setStatus({ type: 'saved', message: t('publishers.status.saved') })
     } catch (error) {
       setStatus({ type: 'error', message: (error as Error).message })
@@ -390,6 +419,7 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
           title: t('publishers.lesson.newTitle'),
           order: module.lessons.length + 1,
           contents: [],
+          contentPages: [],
           exercises: [],
         },
       ],
@@ -397,7 +427,7 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
     setSelection({ type: 'lesson', moduleId, lessonId })
   }
 
-  function addContent(
+  function addSummaryContent(
     moduleId: string,
     lessonId: string,
     type: 'TEXT' | 'IMAGE',
@@ -408,6 +438,45 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
         ...lesson.contents,
         {
           id: createId('content'),
+          type,
+          text: type === 'TEXT' ? '' : undefined,
+          lexicalJson: type === 'TEXT' ? '' : undefined,
+          imageUrl: type === 'IMAGE' ? '' : undefined,
+          imageAlt: type === 'IMAGE' ? '' : undefined,
+        },
+      ],
+    }))
+  }
+
+  function addContentPage(moduleId: string, lessonId: string) {
+    const pageId = createId('content-page')
+    updateLessonById(moduleId, lessonId, (lesson) => ({
+      ...lesson,
+      contentPages: [
+        ...lesson.contentPages,
+        {
+          id: pageId,
+          title: t('publishers.contentPage.newTitle'),
+          order: lesson.contentPages.length + 1,
+          contents: [],
+        },
+      ],
+    }))
+    setSelection({ type: 'contentPage', moduleId, lessonId, pageId })
+  }
+
+  function addContentPageContent(
+    moduleId: string,
+    lessonId: string,
+    pageId: string,
+    type: 'TEXT' | 'IMAGE',
+  ) {
+    updateContentPageById(moduleId, lessonId, pageId, (page) => ({
+      ...page,
+      contents: [
+        ...page.contents,
+        {
+          id: createId('content-page-item'),
           type,
           text: type === 'TEXT' ? '' : undefined,
           lexicalJson: type === 'TEXT' ? '' : undefined,
@@ -450,13 +519,15 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
     updateModules((modules) =>
       modules.filter((module) => module.id !== moduleId),
     )
-    if (selection.type === 'module' && selection.moduleId === moduleId) {
-      setSelection({ type: 'course' })
-    }
     if (
-      (selection.type === 'lesson' || selection.type === 'exercise') &&
+      selection.type !== 'course' &&
+      selection.type !== 'module' &&
       selection.moduleId === moduleId
     ) {
+      setSelection({ type: 'course' })
+      return
+    }
+    if (selection.type === 'module' && selection.moduleId === moduleId) {
       setSelection({ type: 'course' })
     }
   }
@@ -467,18 +538,32 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
       lessons: module.lessons.filter((lesson) => lesson.id !== lessonId),
     }))
     if (
-      selection.type === 'lesson' &&
-      selection.lessonId === lessonId &&
-      selection.moduleId === moduleId
+      (selection.type === 'lesson' ||
+        selection.type === 'contentPage' ||
+        selection.type === 'exercise') &&
+      selection.moduleId === moduleId &&
+      selection.lessonId === lessonId
     ) {
       setSelection({ type: 'module', moduleId })
     }
+  }
+
+  function deleteContentPage(
+    moduleId: string,
+    lessonId: string,
+    pageId: string,
+  ) {
+    updateLessonById(moduleId, lessonId, (lesson) => ({
+      ...lesson,
+      contentPages: lesson.contentPages.filter((page) => page.id !== pageId),
+    }))
     if (
-      selection.type === 'exercise' &&
+      selection.type === 'contentPage' &&
+      selection.moduleId === moduleId &&
       selection.lessonId === lessonId &&
-      selection.moduleId === moduleId
+      selection.pageId === pageId
     ) {
-      setSelection({ type: 'module', moduleId })
+      setSelection({ type: 'lesson', moduleId, lessonId })
     }
   }
 
@@ -493,7 +578,12 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
         (exercise) => exercise.id !== exerciseId,
       ),
     }))
-    if (selection.type === 'exercise' && selection.exerciseId === exerciseId) {
+    if (
+      selection.type === 'exercise' &&
+      selection.moduleId === moduleId &&
+      selection.lessonId === lessonId &&
+      selection.exerciseId === exerciseId
+    ) {
       setSelection({ type: 'lesson', moduleId, lessonId })
     }
   }
@@ -512,18 +602,122 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
     })
   }
 
-  function moveLesson(moduleId: string, lessonId: string, direction: -1 | 1) {
-    updateModuleById(moduleId, (module) => {
-      const index = module.lessons.findIndex((lesson) => lesson.id === lessonId)
+  function moveContentPage(
+    moduleId: string,
+    lessonId: string,
+    pageId: string,
+    direction: -1 | 1,
+  ) {
+    updateLessonById(moduleId, lessonId, (lesson) => {
+      const index = lesson.contentPages.findIndex((page) => page.id === pageId)
       const nextIndex = index + direction
-      if (index === -1 || nextIndex < 0 || nextIndex >= module.lessons.length) {
-        return module
+      if (
+        index === -1 ||
+        nextIndex < 0 ||
+        nextIndex >= lesson.contentPages.length
+      ) {
+        return lesson
       }
-      const lessons = [...module.lessons]
-      const [moved] = lessons.splice(index, 1)
-      lessons.splice(nextIndex, 0, moved)
-      return { ...module, lessons }
+      const contentPages = [...lesson.contentPages]
+      const [moved] = contentPages.splice(index, 1)
+      contentPages.splice(nextIndex, 0, moved)
+      return { ...lesson, contentPages }
     })
+  }
+
+  function moveLesson(moduleId: string, lessonId: string, direction: -1 | 1) {
+    let movedToModuleId: string | undefined
+
+    updateModules((modules) => {
+      const next = modules.map((module) => ({
+        ...module,
+        lessons: [...module.lessons],
+      }))
+
+      const moduleIndex = next.findIndex((module) => module.id === moduleId)
+      if (moduleIndex === -1) return modules
+      const lessonIndex = next[moduleIndex].lessons.findIndex(
+        (lesson) => lesson.id === lessonId,
+      )
+      if (lessonIndex === -1) return modules
+
+      const [movedLesson] = next[moduleIndex].lessons.splice(lessonIndex, 1)
+      if (!movedLesson) return modules
+
+      if (direction === -1) {
+        if (lessonIndex > 0) {
+          next[moduleIndex].lessons.splice(lessonIndex - 1, 0, movedLesson)
+          movedToModuleId = next[moduleIndex].id
+          return next
+        }
+
+        let previousModuleIndex = moduleIndex - 1
+        while (
+          previousModuleIndex >= 0 &&
+          next[previousModuleIndex].lessons.length === 0
+        ) {
+          previousModuleIndex -= 1
+        }
+
+        if (previousModuleIndex < 0) {
+          next[moduleIndex].lessons.splice(lessonIndex, 0, movedLesson)
+          return modules
+        }
+
+        next[previousModuleIndex].lessons.push(movedLesson)
+        movedToModuleId = next[previousModuleIndex].id
+        return next
+      }
+
+      if (lessonIndex < next[moduleIndex].lessons.length) {
+        next[moduleIndex].lessons.splice(lessonIndex + 1, 0, movedLesson)
+        movedToModuleId = next[moduleIndex].id
+        return next
+      }
+
+      let nextModuleIndex = moduleIndex + 1
+      while (
+        nextModuleIndex < next.length &&
+        next[nextModuleIndex].lessons.length === 0
+      ) {
+        nextModuleIndex += 1
+      }
+
+      if (nextModuleIndex >= next.length) {
+        next[moduleIndex].lessons.splice(lessonIndex, 0, movedLesson)
+        return modules
+      }
+
+      next[nextModuleIndex].lessons.unshift(movedLesson)
+      movedToModuleId = next[nextModuleIndex].id
+      return next
+    })
+
+    if (!movedToModuleId) return
+
+    if (selection.type === 'lesson' && selection.lessonId === lessonId) {
+      setSelection({
+        type: 'lesson',
+        moduleId: movedToModuleId,
+        lessonId,
+      })
+      return
+    }
+
+    if (selection.type === 'contentPage' && selection.lessonId === lessonId) {
+      setSelection({
+        ...selection,
+        moduleId: movedToModuleId,
+      })
+      return
+    }
+
+    if (selection.type === 'exercise' && selection.lessonId === lessonId) {
+      setSelection({
+        ...selection,
+        moduleId: movedToModuleId,
+      })
+    }
   }
 
   function moveExercise(
@@ -532,121 +726,165 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
     exerciseId: string,
     direction: -1 | 1,
   ) {
-    updateLessonById(moduleId, lessonId, (lesson) => {
-      const index = lesson.exercises.findIndex(
+    let targetModuleId: string | undefined
+    let targetLessonId: string | undefined
+
+    updateModules((modules) => {
+      const next = modules.map((module) => ({
+        ...module,
+        lessons: module.lessons.map((lesson) => ({
+          ...lesson,
+          exercises: [...lesson.exercises],
+        })),
+      }))
+
+      const sourceModuleIndex = next.findIndex(
+        (module) => module.id === moduleId,
+      )
+      if (sourceModuleIndex === -1) return modules
+      const sourceLessonIndex = next[sourceModuleIndex].lessons.findIndex(
+        (lesson) => lesson.id === lessonId,
+      )
+      if (sourceLessonIndex === -1) return modules
+
+      const sourceLesson = next[sourceModuleIndex].lessons[sourceLessonIndex]
+      const sourceExerciseIndex = sourceLesson.exercises.findIndex(
         (exercise) => exercise.id === exerciseId,
       )
-      const nextIndex = index + direction
-      if (
-        index === -1 ||
-        nextIndex < 0 ||
-        nextIndex >= lesson.exercises.length
-      ) {
-        return lesson
-      }
-      const exercises = [...lesson.exercises]
-      const [moved] = exercises.splice(index, 1)
-      exercises.splice(nextIndex, 0, moved)
-      return { ...lesson, exercises }
-    })
-  }
+      if (sourceExerciseIndex === -1) return modules
 
-  function moveLessonToModule(
-    lessonId: string,
-    fromModuleId: string,
-    toModuleId: string,
-  ) {
-    if (fromModuleId === toModuleId) return
-    let movingLesson: LessonDraft | undefined
-    updateModules((modules) => {
-      const withoutLesson = modules.map((module) => {
-        if (module.id !== fromModuleId) return module
-        const lessons = module.lessons.filter((lesson) => {
-          if (lesson.id === lessonId) {
-            movingLesson = lesson
-            return false
+      const [movedExercise] = sourceLesson.exercises.splice(
+        sourceExerciseIndex,
+        1,
+      )
+      if (!movedExercise) return modules
+
+      if (direction === -1) {
+        if (sourceExerciseIndex > 0) {
+          sourceLesson.exercises.splice(
+            sourceExerciseIndex - 1,
+            0,
+            movedExercise,
+          )
+          targetModuleId = next[sourceModuleIndex].id
+          targetLessonId = sourceLesson.id
+          return next
+        }
+
+        let targetModuleIndex = sourceModuleIndex
+        let targetLessonIndex = sourceLessonIndex - 1
+        while (targetModuleIndex >= 0) {
+          if (targetLessonIndex >= 0) break
+          targetModuleIndex -= 1
+          if (targetModuleIndex >= 0) {
+            targetLessonIndex = next[targetModuleIndex].lessons.length - 1
           }
-          return true
-        })
-        return { ...module, lessons }
-      })
-      if (!movingLesson) return modules
-      return withoutLesson.map((module) => {
-        if (module.id !== toModuleId) return module
-        return {
-          ...module,
-          lessons: [...module.lessons, movingLesson as LessonDraft],
         }
-      })
+
+        if (targetModuleIndex < 0 || targetLessonIndex < 0) {
+          sourceLesson.exercises.splice(sourceExerciseIndex, 0, movedExercise)
+          return modules
+        }
+
+        const targetLesson = next[targetModuleIndex].lessons[targetLessonIndex]
+        targetLesson.exercises.push(movedExercise)
+        targetModuleId = next[targetModuleIndex].id
+        targetLessonId = targetLesson.id
+        return next
+      }
+
+      if (sourceExerciseIndex < sourceLesson.exercises.length) {
+        sourceLesson.exercises.splice(sourceExerciseIndex + 1, 0, movedExercise)
+        targetModuleId = next[sourceModuleIndex].id
+        targetLessonId = sourceLesson.id
+        return next
+      }
+
+      let targetModuleIndex = sourceModuleIndex
+      let targetLessonIndex = sourceLessonIndex + 1
+      while (targetModuleIndex < next.length) {
+        if (targetLessonIndex < next[targetModuleIndex].lessons.length) break
+        targetModuleIndex += 1
+        targetLessonIndex = 0
+      }
+
+      if (targetModuleIndex >= next.length) {
+        sourceLesson.exercises.splice(sourceExerciseIndex, 0, movedExercise)
+        return modules
+      }
+
+      const targetLesson = next[targetModuleIndex].lessons[targetLessonIndex]
+      targetLesson.exercises.unshift(movedExercise)
+      targetModuleId = next[targetModuleIndex].id
+      targetLessonId = targetLesson.id
+      return next
     })
-    setSelection({ type: 'lesson', moduleId: toModuleId, lessonId })
+
+    if (selection.type === 'exercise' && selection.exerciseId === exerciseId) {
+      setSelection({
+        type: 'exercise',
+        moduleId: targetModuleId ?? moduleId,
+        lessonId: targetLessonId ?? lessonId,
+        exerciseId,
+      })
+    }
   }
 
-  function moveExerciseToLesson(
-    exerciseId: string,
-    fromModuleId: string,
-    fromLessonId: string,
-    toModuleId: string,
-    toLessonId: string,
+  function renderContentEditor(
+    contents: ContentDraft[],
+    updateContent: (index: number, partial: Partial<ContentDraft>) => void,
+    baseTestId: string,
   ) {
-    if (fromModuleId === toModuleId && fromLessonId === toLessonId) return
-    let movingExercise: ExerciseDraft | undefined
-    updateModules((modules) => {
-      const stripped = modules.map((module) => {
-        if (module.id !== fromModuleId) return module
-        return {
-          ...module,
-          lessons: module.lessons.map((lesson) => {
-            if (lesson.id !== fromLessonId) return lesson
-            const exercises = lesson.exercises.filter((exercise) => {
-              if (exercise.id === exerciseId) {
-                movingExercise = exercise
-                return false
-              }
-              return true
-            })
-            return { ...lesson, exercises }
-          }),
-        }
-      })
-      if (!movingExercise) return modules
-      return stripped.map((module) => {
-        if (module.id !== toModuleId) return module
-        return {
-          ...module,
-          lessons: module.lessons.map((lesson) => {
-            if (lesson.id !== toLessonId) return lesson
-            return {
-              ...lesson,
-              exercises: [...lesson.exercises, movingExercise as ExerciseDraft],
+    if (contents.length === 0) {
+      return <p className="muted">{t('publishers.content.empty')}</p>
+    }
+
+    return contents.map((content, contentIndex) => (
+      <div key={content.id} className="publisher-content-block">
+        {content.type === 'TEXT' ? (
+          <RichTextEditor
+            initialText={content.text}
+            placeholder={t('publishers.content.textPlaceholder')}
+            onChange={(value) =>
+              updateContent(contentIndex, {
+                lexicalJson: value.lexicalJson,
+                text: value.text,
+              })
             }
-          }),
-        }
-      })
-    })
-    setSelection({
-      type: 'exercise',
-      moduleId: toModuleId,
-      lessonId: toLessonId,
-      exerciseId,
-    })
+          />
+        ) : (
+          <div className="publisher-grid">
+            <label className="publisher-field">
+              {t('publishers.content.imageUrl')}
+              <input
+                type="text"
+                data-test={`${baseTestId}-image-url`}
+                value={content.imageUrl ?? ''}
+                onChange={(event) =>
+                  updateContent(contentIndex, {
+                    imageUrl: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <label className="publisher-field">
+              {t('publishers.content.imageAlt')}
+              <input
+                type="text"
+                data-test={`${baseTestId}-image-alt`}
+                value={content.imageAlt ?? ''}
+                onChange={(event) =>
+                  updateContent(contentIndex, {
+                    imageAlt: event.target.value,
+                  })
+                }
+              />
+            </label>
+          </div>
+        )}
+      </div>
+    ))
   }
-
-  const previewLessons = useMemo(() => {
-    const orderedModules = [...draft.modules].sort((a, b) => a.order - b.order)
-    return orderedModules.flatMap((module) =>
-      [...module.lessons]
-        .sort((a, b) => a.order - b.order)
-        .map(toLearnerLesson),
-    )
-  }, [draft.modules])
-
-  const selectionLabel = useMemo(() => {
-    if (selection.type === 'course') return t('publishers.selection.course')
-    if (selection.type === 'module') return t('publishers.selection.module')
-    if (selection.type === 'lesson') return t('publishers.selection.lesson')
-    return t('publishers.selection.exercise')
-  }, [selection, t])
 
   function renderEditor() {
     if (selection.type === 'course') {
@@ -656,23 +894,15 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
             {t('publishers.course.title')}
             <input
               type="text"
+              data-test="publisher-course-title"
               value={draft.title}
               onChange={(event) => updateDraft({ title: event.target.value })}
-            />
-          </label>
-          <label className="publisher-field">
-            {t('publishers.course.language')}
-            <input
-              type="text"
-              value={draft.language}
-              onChange={(event) =>
-                updateDraft({ language: event.target.value })
-              }
             />
           </label>
           <label className="publisher-field publisher-full">
             {t('publishers.course.description')}
             <textarea
+              data-test="publisher-course-description"
               value={draft.description}
               onChange={(event) =>
                 updateDraft({ description: event.target.value })
@@ -690,6 +920,7 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
             {t('publishers.modules.name')}
             <input
               type="text"
+              data-test="publisher-module-title"
               value={selectedModule.title}
               onChange={(event) =>
                 updateModuleById(selection.moduleId, (module) => ({
@@ -703,6 +934,7 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
             <button
               type="button"
               className="ghost-button"
+              data-test="publisher-module-add-lesson"
               onClick={() => addLesson(selection.moduleId)}
             >
               {t('publishers.lessons.add')}
@@ -710,6 +942,7 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
             <button
               type="button"
               className="ghost-button"
+              data-test="publisher-module-delete"
               onClick={() => deleteModule(selection.moduleId)}
             >
               {t('publishers.actions.delete')}
@@ -727,6 +960,7 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
               {t('publishers.lessons.name')}
               <input
                 type="text"
+                data-test="publisher-lesson-title"
                 value={selectedLesson.title}
                 onChange={(event) =>
                   updateLessonById(
@@ -744,8 +978,13 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
               <button
                 type="button"
                 className="ghost-button"
+                data-test="publisher-lesson-add-text"
                 onClick={() =>
-                  addContent(selection.moduleId, selection.lessonId, 'TEXT')
+                  addSummaryContent(
+                    selection.moduleId,
+                    selection.lessonId,
+                    'TEXT',
+                  )
                 }
               >
                 {t('publishers.content.addText')}
@@ -753,8 +992,13 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
               <button
                 type="button"
                 className="ghost-button"
+                data-test="publisher-lesson-add-image"
                 onClick={() =>
-                  addContent(selection.moduleId, selection.lessonId, 'IMAGE')
+                  addSummaryContent(
+                    selection.moduleId,
+                    selection.lessonId,
+                    'IMAGE',
+                  )
                 }
               >
                 {t('publishers.content.addImage')}
@@ -762,6 +1006,17 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
               <button
                 type="button"
                 className="ghost-button"
+                data-test="publisher-lesson-add-content-page"
+                onClick={() =>
+                  addContentPage(selection.moduleId, selection.lessonId)
+                }
+              >
+                {t('publishers.contentPages.add')}
+              </button>
+              <button
+                type="button"
+                className="ghost-button"
+                data-test="publisher-lesson-add-exercise"
                 onClick={() =>
                   addExercise(selection.moduleId, selection.lessonId)
                 }
@@ -771,6 +1026,7 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
               <button
                 type="button"
                 className="ghost-button"
+                data-test="publisher-lesson-delete"
                 onClick={() =>
                   deleteLesson(selection.moduleId, selection.lessonId)
                 }
@@ -781,89 +1037,61 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
           </div>
 
           <div className="publisher-section">
-            <h4>{t('publishers.content.title')}</h4>
-            {selectedLesson.contents.length ? null : (
-              <p className="muted">{t('publishers.content.empty')}</p>
-            )}
-            {selectedLesson.contents.map(
-              (content: ContentDraft, contentIndex: number) => (
-                <div key={content.id} className="publisher-content-block">
-                  {content.type === 'TEXT' ? (
-                    <RichTextEditor
-                      initialText={content.text}
-                      placeholder={t('publishers.content.textPlaceholder')}
-                      onChange={(value) =>
-                        updateLessonById(
-                          selection.moduleId,
-                          selection.lessonId,
-                          (lesson) => {
-                            const contents = [...lesson.contents]
-                            contents[contentIndex] = {
-                              ...contents[contentIndex],
-                              lexicalJson: value.lexicalJson,
-                              text: value.text,
-                            }
-                            return { ...lesson, contents }
-                          },
-                        )
-                      }
-                    />
-                  ) : (
-                    <div className="publisher-grid">
-                      <label className="publisher-field">
-                        {t('publishers.content.imageUrl')}
-                        <input
-                          type="text"
-                          value={content.imageUrl ?? ''}
-                          onChange={(event) =>
-                            updateLessonById(
-                              selection.moduleId,
-                              selection.lessonId,
-                              (lesson) => {
-                                const contents = [...lesson.contents]
-                                contents[contentIndex] = {
-                                  ...contents[contentIndex],
-                                  imageUrl: event.target.value,
-                                }
-                                return { ...lesson, contents }
-                              },
-                            )
-                          }
-                        />
-                      </label>
-                      <label className="publisher-field">
-                        {t('publishers.content.imageAlt')}
-                        <input
-                          type="text"
-                          value={content.imageAlt ?? ''}
-                          onChange={(event) =>
-                            updateLessonById(
-                              selection.moduleId,
-                              selection.lessonId,
-                              (lesson) => {
-                                const contents = [...lesson.contents]
-                                contents[contentIndex] = {
-                                  ...contents[contentIndex],
-                                  imageAlt: event.target.value,
-                                }
-                                return { ...lesson, contents }
-                              },
-                            )
-                          }
-                        />
-                      </label>
-                    </div>
-                  )}
-                </div>
-              ),
+            <h4>{t('publishers.summary.title')}</h4>
+            {renderContentEditor(
+              selectedLesson.contents,
+              (contentIndex, partial) => {
+                updateLessonById(
+                  selection.moduleId,
+                  selection.lessonId,
+                  (lesson) => {
+                    const contents = [...lesson.contents]
+                    contents[contentIndex] = {
+                      ...contents[contentIndex],
+                      ...partial,
+                    }
+                    return { ...lesson, contents }
+                  },
+                )
+              },
+              'publisher-summary-content',
             )}
           </div>
 
           <div className="publisher-section">
+            <h4>{t('publishers.contentPages.title')}</h4>
+            {(selectedLesson.contentPages ?? []).map((page) => (
+              <button
+                key={page.id}
+                type="button"
+                className={
+                  selection.type === 'contentPage' &&
+                  selection.pageId === page.id
+                    ? 'publisher-node selected'
+                    : 'publisher-node'
+                }
+                onClick={() =>
+                  setSelection({
+                    type: 'contentPage',
+                    moduleId: selection.moduleId,
+                    lessonId: selection.lessonId,
+                    pageId: page.id ?? '',
+                  })
+                }
+              >
+                <span>{page.title}</span>
+                <span className="muted">
+                  {t('publishers.structure.contentPage')}
+                </span>
+              </button>
+            ))}
+            {(selectedLesson.contentPages ?? []).length === 0 ? (
+              <p className="muted">{t('publishers.contentPages.empty')}</p>
+            ) : null}
+          </div>
+
+          <div className="publisher-section">
             <h4>{t('publishers.exercise.title')}</h4>
-            {selectedLesson.exercises.length ? null : (
-              <p className="muted">{t('publishers.exercise.empty')}</p>
-            )}
             {selectedLesson.exercises.map((exercise) => (
               <button
                 key={exercise.id}
@@ -887,38 +1115,110 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
                 <span className="muted">{exercise.type}</span>
               </button>
             ))}
+            {selectedLesson.exercises.length === 0 ? (
+              <p className="muted">{t('publishers.exercise.empty')}</p>
+            ) : null}
+          </div>
+        </div>
+      )
+    }
+
+    if (
+      selection.type === 'contentPage' &&
+      selectedLesson &&
+      selectedContentPage
+    ) {
+      return (
+        <div className="publisher-stack">
+          <div className="publisher-grid">
+            <label className="publisher-field publisher-full">
+              {t('publishers.contentPage.title')}
+              <input
+                type="text"
+                data-test="publisher-content-page-title"
+                value={selectedContentPage.title}
+                onChange={(event) =>
+                  updateContentPageById(
+                    selection.moduleId,
+                    selection.lessonId,
+                    selection.pageId,
+                    (page) => ({
+                      ...page,
+                      title: event.target.value,
+                    }),
+                  )
+                }
+              />
+            </label>
+            <div className="publisher-inline-actions publisher-full">
+              <button
+                type="button"
+                className="ghost-button"
+                data-test="publisher-content-page-add-text"
+                onClick={() =>
+                  addContentPageContent(
+                    selection.moduleId,
+                    selection.lessonId,
+                    selection.pageId,
+                    'TEXT',
+                  )
+                }
+              >
+                {t('publishers.content.addText')}
+              </button>
+              <button
+                type="button"
+                className="ghost-button"
+                data-test="publisher-content-page-add-image"
+                onClick={() =>
+                  addContentPageContent(
+                    selection.moduleId,
+                    selection.lessonId,
+                    selection.pageId,
+                    'IMAGE',
+                  )
+                }
+              >
+                {t('publishers.content.addImage')}
+              </button>
+              <button
+                type="button"
+                className="ghost-button"
+                data-test="publisher-content-page-delete"
+                onClick={() =>
+                  deleteContentPage(
+                    selection.moduleId,
+                    selection.lessonId,
+                    selection.pageId,
+                  )
+                }
+              >
+                {t('publishers.actions.delete')}
+              </button>
+            </div>
           </div>
 
           <div className="publisher-section">
-            <h4>{t('publishers.move.title')}</h4>
-            <label className="publisher-field">
-              {t('publishers.move.module')}
-              <select
-                value={moveTarget.moduleId ?? selection.moduleId}
-                onChange={(event) =>
-                  setMoveTarget({ moduleId: event.target.value })
-                }
-              >
-                {draft.modules.map((module) => (
-                  <option key={module.id} value={module.id}>
-                    {module.title || t('publishers.modules.untitled')}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              type="button"
-              className="ghost-button"
-              onClick={() =>
-                moveLessonToModule(
-                  selection.lessonId,
+            <h4>{t('publishers.content.title')}</h4>
+            {renderContentEditor(
+              selectedContentPage.contents,
+              (contentIndex, partial) => {
+                updateContentPageById(
                   selection.moduleId,
-                  moveTarget.moduleId ?? selection.moduleId,
+                  selection.lessonId,
+                  selection.pageId,
+                  (page) => {
+                    const contents = [...page.contents]
+                    contents[contentIndex] = {
+                      ...contents[contentIndex],
+                      ...partial,
+                    }
+                    return { ...page, contents }
+                  },
                 )
-              }
-            >
-              {t('publishers.actions.move')}
-            </button>
+              },
+              'publisher-content-page-content',
+            )}
           </div>
         </div>
       )
@@ -932,6 +1232,7 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
               {t('publishers.exercise.name')}
               <input
                 type="text"
+                data-test="publisher-exercise-title"
                 value={selectedExercise.title}
                 onChange={(event) =>
                   updateExerciseById(
@@ -949,6 +1250,7 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
             <label className="publisher-field publisher-full">
               {t('publishers.exercise.instructions')}
               <textarea
+                data-test="publisher-exercise-instructions"
                 value={selectedExercise.instructions ?? ''}
                 onChange={(event) =>
                   updateExerciseById(
@@ -967,6 +1269,7 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
               <button
                 type="button"
                 className="ghost-button"
+                data-test="publisher-exercise-delete"
                 onClick={() =>
                   deleteExercise(
                     selection.moduleId,
@@ -987,6 +1290,7 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
                   {t('publishers.exercise.prompt')}
                   <input
                     type="text"
+                    data-test="publisher-step-prompt"
                     value={step.prompt}
                     onChange={(event) =>
                       updateExerciseById(
@@ -1010,6 +1314,7 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
                     {t('publishers.exercise.threadId')}
                     <input
                       type="text"
+                      data-test="publisher-step-thread-id"
                       value={step.threadId}
                       onChange={(event) =>
                         updateExerciseById(
@@ -1032,6 +1337,7 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
                     {t('publishers.exercise.threadTitle')}
                     <input
                       type="text"
+                      data-test="publisher-step-thread-title"
                       value={step.threadTitle ?? ''}
                       onChange={(event) =>
                         updateExerciseById(
@@ -1054,7 +1360,8 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
                 <label className="publisher-field">
                   {t('publishers.exercise.template')}
                   <textarea
-                    value={step.template}
+                    data-test="publisher-step-template"
+                    value={step.template ?? ''}
                     onChange={(event) =>
                       updateExerciseById(
                         selection.moduleId,
@@ -1083,6 +1390,7 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
                         <label className="publisher-field">
                           {t('publishers.exercise.blankVariant')}
                           <select
+                            data-test="publisher-blank-variant"
                             value={blank.variant}
                             onChange={(event) =>
                               updateExerciseById(
@@ -1118,6 +1426,7 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
                           {t('publishers.exercise.correct')}
                           <input
                             type="text"
+                            data-test="publisher-blank-correct"
                             value={blank.correct}
                             onChange={(event) =>
                               updateExerciseById(
@@ -1146,6 +1455,7 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
                             {t('publishers.exercise.options')}
                             <input
                               type="text"
+                              data-test="publisher-blank-options"
                               value={normalizeBlankOptions(blank.options)}
                               onChange={(event) =>
                                 updateExerciseById(
@@ -1177,71 +1487,6 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
               </div>
             ),
           )}
-
-          <div className="publisher-section">
-            <h4>{t('publishers.move.title')}</h4>
-            <div className="publisher-grid">
-              <label className="publisher-field">
-                {t('publishers.move.module')}
-                <select
-                  value={moveTarget.moduleId ?? selection.moduleId}
-                  onChange={(event) =>
-                    setMoveTarget({
-                      moduleId: event.target.value,
-                      lessonId: moveTarget.lessonId ?? selection.lessonId,
-                    })
-                  }
-                >
-                  {draft.modules.map((module) => (
-                    <option key={module.id} value={module.id}>
-                      {module.title || t('publishers.modules.untitled')}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="publisher-field">
-                {t('publishers.move.lesson')}
-                <select
-                  value={moveTarget.lessonId ?? selection.lessonId}
-                  onChange={(event) =>
-                    setMoveTarget((prev) => ({
-                      ...prev,
-                      lessonId: event.target.value,
-                    }))
-                  }
-                >
-                  {(
-                    draft.modules.find(
-                      (module) =>
-                        module.id ===
-                        (moveTarget.moduleId ?? selection.moduleId),
-                    )?.lessons ?? []
-                  )
-                    .sort((a, b) => a.order - b.order)
-                    .map((lesson) => (
-                      <option key={lesson.id} value={lesson.id}>
-                        {lesson.title || t('publishers.lessons.untitled')}
-                      </option>
-                    ))}
-                </select>
-              </label>
-            </div>
-            <button
-              type="button"
-              className="ghost-button"
-              onClick={() =>
-                moveExerciseToLesson(
-                  selection.exerciseId,
-                  selection.moduleId,
-                  selection.lessonId,
-                  moveTarget.moduleId ?? selection.moduleId,
-                  moveTarget.lessonId ?? selection.lessonId,
-                )
-              }
-            >
-              {t('publishers.actions.move')}
-            </button>
-          </div>
         </div>
       )
     }
@@ -1250,62 +1495,77 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
   }
 
   function renderPreview() {
-    if (previewScope === 'course') {
+    if (selection.type === 'course') {
       if (!previewLessons.length) {
         return <p className="muted">{t('publishers.preview.empty')}</p>
       }
       return (
-        <div className="publisher-preview">
+        <div className="publisher-preview" data-test="publisher-preview-root">
           {previewLessons.map((lesson) => (
             <div key={lesson.id} className="publisher-preview-item">
-              <LessonView lesson={lesson} />
+              <LessonView lesson={lesson} selection={{ type: 'summary' }} />
             </div>
           ))}
         </div>
       )
     }
 
-    if (previewScope === 'selection') {
-      if (selection.type === 'lesson' && selectedLesson) {
-        return (
-          <div className="publisher-preview">
-            <LessonView lesson={toLearnerLesson(selectedLesson)} />
-          </div>
-        )
+    if (selection.type === 'module' && selectedModule) {
+      const lessons = [...selectedModule.lessons]
+        .sort((a, b) => a.order - b.order)
+        .map(toLearnerLesson)
+      if (!lessons.length) {
+        return <p className="muted">{t('publishers.preview.empty')}</p>
       }
-
-      if (selection.type === 'module' && selectedModule) {
-        const moduleLessons = selectedModule.lessons
-          .sort((a, b) => a.order - b.order)
-          .map(toLearnerLesson)
-        if (!moduleLessons.length) {
-          return <p className="muted">{t('publishers.preview.empty')}</p>
-        }
-        return (
-          <div className="publisher-preview">
-            {moduleLessons.map((lesson) => (
-              <div key={lesson.id} className="publisher-preview-item">
-                <LessonView lesson={lesson} />
-              </div>
-            ))}
-          </div>
-        )
-      }
-
-      if (selection.type === 'exercise' && selectedExercise) {
-        return (
-          <div className="publisher-preview">
-            <FillInBlankExercise
-              exercise={toLearnerExercise(selectedExercise)}
-            />
-          </div>
-        )
-      }
-
-      return <p className="muted">{t('publishers.preview.selectionPrompt')}</p>
+      return (
+        <div className="publisher-preview" data-test="publisher-preview-root">
+          {lessons.map((lesson) => (
+            <div key={lesson.id} className="publisher-preview-item">
+              <LessonView lesson={lesson} selection={{ type: 'summary' }} />
+            </div>
+          ))}
+        </div>
+      )
     }
 
-    return null
+    if (selection.type === 'lesson' && selectedLesson) {
+      return (
+        <div className="publisher-preview" data-test="publisher-preview-root">
+          <LessonView
+            lesson={toLearnerLesson(selectedLesson)}
+            selection={{ type: 'summary' }}
+          />
+        </div>
+      )
+    }
+
+    if (
+      selection.type === 'contentPage' &&
+      selectedLesson &&
+      selectedContentPage
+    ) {
+      return (
+        <div className="publisher-preview" data-test="publisher-preview-root">
+          <LessonView
+            lesson={toLearnerLesson(selectedLesson)}
+            selection={{
+              type: 'contentPage',
+              contentPageId: selectedContentPage.id,
+            }}
+          />
+        </div>
+      )
+    }
+
+    if (selection.type === 'exercise' && selectedExercise) {
+      return (
+        <div className="publisher-preview" data-test="publisher-preview-root">
+          <FillInBlankExercise exercise={toLearnerExercise(selectedExercise)} />
+        </div>
+      )
+    }
+
+    return <p className="muted">{t('publishers.preview.selectionPrompt')}</p>
   }
 
   return (
@@ -1316,15 +1576,24 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
           <p className="muted">{t('publishers.home.subtitle')}</p>
         </div>
         <div className="publisher-actions">
+          <Link
+            to="/publish"
+            className="ghost-button"
+            data-test="publisher-back"
+          >
+            {t('publishers.home.backToCourses')}
+          </Link>
           <PrimaryButton
             onClick={handleSeed}
             aria-label={t('publishers.home.seed')}
+            data-test="publisher-seed"
           >
             {t('publishers.home.seed')}
           </PrimaryButton>
           <PrimaryButton
             onClick={handleSave}
             aria-label={t('publishers.home.save')}
+            data-test="publisher-save"
           >
             {t('publishers.home.save')}
           </PrimaryButton>
@@ -1332,462 +1601,523 @@ export function PublisherHome({ courses }: PublisherHomeProps) {
       </div>
 
       {status.type !== 'idle' ? (
-        <p className={status.type === 'error' ? 'status-error' : 'muted'}>
+        <p
+          className={status.type === 'error' ? 'status-error' : 'muted'}
+          data-test="publisher-status"
+          data-status={status.type}
+        >
           {status.message}
         </p>
       ) : null}
 
-      <div className="publisher-layout">
-        <aside className="publisher-nav">
-          <Surface className="publisher-section">
+      <div className={layoutClassName}>
+        <aside
+          className={
+            collapsedPanels.structure
+              ? 'publisher-column publisher-column-structure collapsed'
+              : 'publisher-column publisher-column-structure'
+          }
+        >
+          <div className="publisher-column-header">
             <div className="section-header">
-              <h3>{t('publishers.course.select')}</h3>
+              <h3>{t('publishers.columns.structure')}</h3>
               <button
                 type="button"
                 className="ghost-button"
-                onClick={() => {
-                  setSelectedId(undefined)
-                  setDraft(normalizeDraft(emptyCourse(t)))
-                  setSelection({ type: 'course' })
-                }}
+                data-test="publisher-column-structure-toggle"
+                aria-expanded={!collapsedPanels.structure}
+                onClick={() => togglePanel('structure')}
               >
-                {t('publishers.course.new')}
+                {collapsedPanels.structure
+                  ? t('publishers.actions.expand')
+                  : t('publishers.actions.collapse')}
               </button>
             </div>
-            <div className="publisher-grid">
-              <label className="publisher-field publisher-full">
-                {t('publishers.course.existing')}
-                <select
-                  value={selectedId ?? ''}
-                  onChange={(event) => {
-                    const value = event.target.value
-                    if (!value) {
-                      setSelectedId(undefined)
-                      setDraft(normalizeDraft(emptyCourse(t)))
-                      setSelection({ type: 'course' })
-                      return
-                    }
-                    selectCourse(value)
-                  }}
-                >
-                  <option value="">
-                    {t('publishers.course.selectPlaceholder')}
-                  </option>
-                  {courseOptions.map((course: CourseDraft) => (
-                    <option key={course.id} value={course.id}>
-                      {course.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          </Surface>
+          </div>
 
-          <Surface className="publisher-section">
-            <div className="section-header">
-              <h3>{t('publishers.structure.title')}</h3>
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={addModule}
-              >
-                {t('publishers.modules.add')}
-              </button>
-            </div>
-            <div className="publisher-tree">
-              <button
-                type="button"
-                className={
-                  selection.type === 'course'
-                    ? 'publisher-node selected'
-                    : 'publisher-node'
-                }
-                onClick={() => setSelection({ type: 'course' })}
-              >
-                <span>{draft.title || t('publishers.course.untitled')}</span>
-                <span className="muted">
-                  {t('publishers.structure.course')}
-                </span>
-              </button>
+          {!collapsedPanels.structure ? (
+            <div className="publisher-column-body">
+              <Surface className="publisher-section">
+                <div className="section-header">
+                  <h3>{t('publishers.structure.title')}</h3>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    data-test="publisher-add-module"
+                    onClick={addModule}
+                  >
+                    {t('publishers.modules.add')}
+                  </button>
+                </div>
 
-              {draft.modules.map((module: ModuleDraft) => (
-                <div key={module.id} className="publisher-tree-group">
-                  <div
+                <div className="publisher-tree">
+                  <button
+                    type="button"
+                    data-test="publisher-course-node"
                     className={
-                      selection.type === 'module' &&
-                      selection.moduleId === module.id
+                      selection.type === 'course'
                         ? 'publisher-node selected'
                         : 'publisher-node'
                     }
-                    draggable
-                    onDragStart={() =>
-                      setDragState({
-                        type: 'module',
-                        moduleId: module.id ?? '',
-                      })
-                    }
-                    onDragEnd={() => setDragState(null)}
-                    onDragOver={(event) => event.preventDefault()}
-                    onDrop={() => {
-                      if (!module.id) return
-                      if (dragState?.type === 'module') {
-                        updateModules((modules) =>
-                          reorderById(
-                            modules,
-                            dragState.moduleId,
-                            module.id ?? '',
-                          ),
-                        )
-                        setDragState(null)
-                        return
-                      }
-                      if (
-                        dragState?.type === 'lesson' &&
-                        dragState.moduleId !== module.id
-                      ) {
-                        moveLessonToModule(
-                          dragState.lessonId,
-                          dragState.moduleId,
-                          module.id,
-                        )
-                        setDragState(null)
-                      }
-                    }}
+                    onClick={() => setSelection({ type: 'course' })}
                   >
-                    <button
-                      type="button"
-                      className="publisher-node-label"
-                      onClick={() =>
-                        setSelection({
-                          type: 'module',
-                          moduleId: module.id ?? '',
-                        })
-                      }
-                    >
-                      <span>{module.title}</span>
-                      <span className="muted">
-                        {t('publishers.structure.module')}
-                      </span>
-                    </button>
-                    <div className="publisher-node-actions">
-                      <button
-                        type="button"
-                        className="ghost-button"
-                        onClick={() => moveModule(module.id ?? '', -1)}
-                        aria-label={t('publishers.actions.moveUp')}
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost-button"
-                        onClick={() => moveModule(module.id ?? '', 1)}
-                        aria-label={t('publishers.actions.moveDown')}
-                      >
-                        ↓
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost-button"
-                        onClick={() => addLesson(module.id ?? '')}
-                      >
-                        {t('publishers.lessons.add')}
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost-button"
-                        onClick={() => deleteModule(module.id ?? '')}
-                        aria-label={t('publishers.actions.delete')}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  </div>
+                    <span>
+                      {draft.title || t('publishers.course.untitled')}
+                    </span>
+                    <span className="publisher-node-kind">
+                      {t('publishers.structure.course')}
+                    </span>
+                  </button>
 
-                  <div className="publisher-tree-children">
-                    {module.lessons.map((lesson: LessonDraft) => (
-                      <div key={lesson.id} className="publisher-tree-lesson">
-                        <div
-                          className={
-                            selection.type === 'lesson' &&
-                            selection.lessonId === lesson.id
-                              ? 'publisher-node selected'
-                              : 'publisher-node'
-                          }
-                          draggable
-                          onDragStart={() =>
-                            setDragState({
-                              type: 'lesson',
+                  {draft.modules.map((module) => (
+                    <div key={module.id} className="publisher-tree-group">
+                      <div
+                        className={
+                          selection.type === 'module' &&
+                          selection.moduleId === module.id
+                            ? 'publisher-node selected'
+                            : 'publisher-node'
+                        }
+                        data-test="publisher-module-node"
+                        data-id={module.id}
+                      >
+                        <button
+                          type="button"
+                          className="publisher-node-label"
+                          data-test="publisher-module-select"
+                          data-id={module.id}
+                          onClick={() =>
+                            setSelection({
+                              type: 'module',
                               moduleId: module.id ?? '',
-                              lessonId: lesson.id ?? '',
                             })
                           }
-                          onDragEnd={() => setDragState(null)}
-                          onDragOver={(event) => event.preventDefault()}
-                          onDrop={() => {
-                            if (!lesson.id) return
-                            if (
-                              dragState?.type === 'lesson' &&
-                              dragState.moduleId === module.id
-                            ) {
-                              updateModuleById(
-                                module.id ?? '',
-                                (moduleItem) => ({
-                                  ...moduleItem,
-                                  lessons: reorderById(
-                                    moduleItem.lessons,
-                                    dragState.lessonId,
-                                    lesson.id ?? '',
-                                  ),
-                                }),
-                              )
-                              setDragState(null)
-                              return
-                            }
-                            if (dragState?.type === 'exercise') {
-                              moveExerciseToLesson(
-                                dragState.exerciseId,
-                                dragState.moduleId,
-                                dragState.lessonId,
-                                module.id ?? '',
-                                lesson.id ?? '',
-                              )
-                              setDragState(null)
-                            }
-                          }}
                         >
+                          <span>
+                            {module.title || t('publishers.modules.untitled')}
+                          </span>
+                          <span className="publisher-node-kind">
+                            {t('publishers.structure.module')}
+                          </span>
+                        </button>
+                        <div className="publisher-node-actions">
                           <button
                             type="button"
-                            className="publisher-node-label"
-                            onClick={() =>
-                              setSelection({
-                                type: 'lesson',
-                                moduleId: module.id ?? '',
-                                lessonId: lesson.id ?? '',
-                              })
-                            }
+                            className="ghost-button"
+                            data-test="publisher-module-move-up"
+                            data-id={module.id}
+                            onClick={() => moveModule(module.id ?? '', -1)}
                           >
-                            <span>{lesson.title}</span>
-                            <span className="muted">
-                              {t('publishers.structure.lesson')}
-                            </span>
+                            {t('publishers.actions.moveUp')}
                           </button>
-                          <div className="publisher-node-actions">
-                            <button
-                              type="button"
-                              className="ghost-button"
-                              onClick={() =>
-                                moveLesson(module.id ?? '', lesson.id ?? '', -1)
-                              }
-                              aria-label={t('publishers.actions.moveUp')}
-                            >
-                              ↑
-                            </button>
-                            <button
-                              type="button"
-                              className="ghost-button"
-                              onClick={() =>
-                                moveLesson(module.id ?? '', lesson.id ?? '', 1)
-                              }
-                              aria-label={t('publishers.actions.moveDown')}
-                            >
-                              ↓
-                            </button>
-                            <button
-                              type="button"
-                              className="ghost-button"
-                              onClick={() =>
-                                addExercise(module.id ?? '', lesson.id ?? '')
-                              }
-                            >
-                              {t('publishers.exercise.add')}
-                            </button>
-                            <button
-                              type="button"
-                              className="ghost-button"
-                              onClick={() =>
-                                deleteLesson(module.id ?? '', lesson.id ?? '')
-                              }
-                              aria-label={t('publishers.actions.delete')}
-                            >
-                              ✕
-                            </button>
-                          </div>
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            data-test="publisher-module-move-down"
+                            data-id={module.id}
+                            onClick={() => moveModule(module.id ?? '', 1)}
+                          >
+                            {t('publishers.actions.moveDown')}
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            data-test="publisher-module-add-lesson"
+                            data-id={module.id}
+                            onClick={() => addLesson(module.id ?? '')}
+                          >
+                            +L
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            data-test="publisher-module-delete"
+                            data-id={module.id}
+                            onClick={() => deleteModule(module.id ?? '')}
+                          >
+                            x
+                          </button>
                         </div>
+                      </div>
 
-                        <div className="publisher-tree-children publisher-tree-exercises">
-                          {lesson.exercises.map((exercise: ExerciseDraft) => (
+                      <div className="publisher-tree-children">
+                        {module.lessons.map((lesson) => (
+                          <div
+                            key={lesson.id}
+                            className="publisher-tree-lesson"
+                          >
                             <div
-                              key={exercise.id}
                               className={
-                                selection.type === 'exercise' &&
-                                selection.exerciseId === exercise.id
+                                selection.type === 'lesson' &&
+                                selection.lessonId === lesson.id
                                   ? 'publisher-node selected'
                                   : 'publisher-node'
                               }
-                              draggable
-                              onDragStart={() =>
-                                setDragState({
-                                  type: 'exercise',
-                                  moduleId: module.id ?? '',
-                                  lessonId: lesson.id ?? '',
-                                  exerciseId: exercise.id ?? '',
-                                })
-                              }
-                              onDragEnd={() => setDragState(null)}
-                              onDragOver={(event) => event.preventDefault()}
-                              onDrop={() => {
-                                if (
-                                  dragState?.type !== 'exercise' ||
-                                  dragState.moduleId !== module.id ||
-                                  dragState.lessonId !== lesson.id ||
-                                  !exercise.id
-                                )
-                                  return
-                                updateLessonById(
-                                  module.id ?? '',
-                                  lesson.id ?? '',
-                                  (lessonItem) => ({
-                                    ...lessonItem,
-                                    exercises: reorderById(
-                                      lessonItem.exercises,
-                                      dragState.exerciseId,
-                                      exercise.id ?? '',
-                                    ),
-                                  }),
-                                )
-                                setDragState(null)
-                              }}
+                              data-test="publisher-lesson-node"
+                              data-id={lesson.id}
+                              data-module-id={module.id}
                             >
                               <button
                                 type="button"
                                 className="publisher-node-label"
+                                data-test="publisher-lesson-select"
+                                data-id={lesson.id}
+                                data-module-id={module.id}
                                 onClick={() =>
                                   setSelection({
-                                    type: 'exercise',
+                                    type: 'lesson',
                                     moduleId: module.id ?? '',
                                     lessonId: lesson.id ?? '',
-                                    exerciseId: exercise.id ?? '',
                                   })
                                 }
                               >
-                                <span>{exercise.title}</span>
-                                <span className="muted">
-                                  {t('publishers.structure.exercise')}
+                                <span>
+                                  {lesson.title ||
+                                    t('publishers.lessons.untitled')}
+                                </span>
+                                <span className="publisher-node-kind">
+                                  {t('publishers.structure.lesson')}
                                 </span>
                               </button>
                               <div className="publisher-node-actions">
                                 <button
                                   type="button"
                                   className="ghost-button"
+                                  data-test="publisher-lesson-move-up"
+                                  data-id={lesson.id}
+                                  data-module-id={module.id}
                                   onClick={() =>
-                                    moveExercise(
+                                    moveLesson(
                                       module.id ?? '',
                                       lesson.id ?? '',
-                                      exercise.id ?? '',
                                       -1,
                                     )
                                   }
-                                  aria-label={t('publishers.actions.moveUp')}
                                 >
-                                  ↑
+                                  {t('publishers.actions.moveUp')}
                                 </button>
                                 <button
                                   type="button"
                                   className="ghost-button"
+                                  data-test="publisher-lesson-move-down"
+                                  data-id={lesson.id}
+                                  data-module-id={module.id}
                                   onClick={() =>
-                                    moveExercise(
+                                    moveLesson(
                                       module.id ?? '',
                                       lesson.id ?? '',
-                                      exercise.id ?? '',
                                       1,
                                     )
                                   }
-                                  aria-label={t('publishers.actions.moveDown')}
                                 >
-                                  ↓
+                                  {t('publishers.actions.moveDown')}
                                 </button>
                                 <button
                                   type="button"
                                   className="ghost-button"
+                                  data-test="publisher-lesson-add-content-page"
+                                  data-id={lesson.id}
+                                  data-module-id={module.id}
                                   onClick={() =>
-                                    deleteExercise(
+                                    addContentPage(
                                       module.id ?? '',
                                       lesson.id ?? '',
-                                      exercise.id ?? '',
                                     )
                                   }
-                                  aria-label={t('publishers.actions.delete')}
                                 >
-                                  ✕
+                                  +P
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ghost-button"
+                                  data-test="publisher-lesson-add-exercise-tree"
+                                  data-id={lesson.id}
+                                  data-module-id={module.id}
+                                  onClick={() =>
+                                    addExercise(
+                                      module.id ?? '',
+                                      lesson.id ?? '',
+                                    )
+                                  }
+                                >
+                                  +E
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ghost-button"
+                                  data-test="publisher-lesson-delete"
+                                  data-id={lesson.id}
+                                  data-module-id={module.id}
+                                  onClick={() =>
+                                    deleteLesson(
+                                      module.id ?? '',
+                                      lesson.id ?? '',
+                                    )
+                                  }
+                                >
+                                  x
                                 </button>
                               </div>
                             </div>
-                          ))}
-                        </div>
+
+                            <div className="publisher-tree-children publisher-tree-content-pages">
+                              {(lesson.contentPages ?? []).map((page) => (
+                                <div
+                                  key={page.id}
+                                  className={
+                                    selection.type === 'contentPage' &&
+                                    selection.pageId === page.id
+                                      ? 'publisher-node selected'
+                                      : 'publisher-node'
+                                  }
+                                  data-test="publisher-content-page-node"
+                                  data-id={page.id}
+                                  data-module-id={module.id}
+                                  data-lesson-id={lesson.id}
+                                >
+                                  <button
+                                    type="button"
+                                    className="publisher-node-label"
+                                    data-test="publisher-content-page-select"
+                                    data-id={page.id}
+                                    data-module-id={module.id}
+                                    data-lesson-id={lesson.id}
+                                    onClick={() =>
+                                      setSelection({
+                                        type: 'contentPage',
+                                        moduleId: module.id ?? '',
+                                        lessonId: lesson.id ?? '',
+                                        pageId: page.id ?? '',
+                                      })
+                                    }
+                                  >
+                                    <span>{page.title}</span>
+                                    <span className="publisher-node-kind">
+                                      {t('publishers.structure.contentPage')}
+                                    </span>
+                                  </button>
+                                  <div className="publisher-node-actions">
+                                    <button
+                                      type="button"
+                                      className="ghost-button"
+                                      data-test="publisher-content-page-move-up"
+                                      data-id={page.id}
+                                      onClick={() =>
+                                        moveContentPage(
+                                          module.id ?? '',
+                                          lesson.id ?? '',
+                                          page.id ?? '',
+                                          -1,
+                                        )
+                                      }
+                                    >
+                                      {t('publishers.actions.moveUp')}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="ghost-button"
+                                      data-test="publisher-content-page-move-down"
+                                      data-id={page.id}
+                                      onClick={() =>
+                                        moveContentPage(
+                                          module.id ?? '',
+                                          lesson.id ?? '',
+                                          page.id ?? '',
+                                          1,
+                                        )
+                                      }
+                                    >
+                                      {t('publishers.actions.moveDown')}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="ghost-button"
+                                      data-test="publisher-content-page-delete-tree"
+                                      data-id={page.id}
+                                      onClick={() =>
+                                        deleteContentPage(
+                                          module.id ?? '',
+                                          lesson.id ?? '',
+                                          page.id ?? '',
+                                        )
+                                      }
+                                    >
+                                      x
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+
+                            <div className="publisher-tree-children publisher-tree-exercises">
+                              {lesson.exercises.map((exercise) => (
+                                <div
+                                  key={exercise.id}
+                                  className={
+                                    selection.type === 'exercise' &&
+                                    selection.exerciseId === exercise.id
+                                      ? 'publisher-node selected'
+                                      : 'publisher-node'
+                                  }
+                                  data-test="publisher-exercise-node"
+                                  data-id={exercise.id}
+                                  data-module-id={module.id}
+                                  data-lesson-id={lesson.id}
+                                >
+                                  <button
+                                    type="button"
+                                    className="publisher-node-label"
+                                    data-test="publisher-exercise-select-tree"
+                                    data-id={exercise.id}
+                                    data-module-id={module.id}
+                                    data-lesson-id={lesson.id}
+                                    onClick={() =>
+                                      setSelection({
+                                        type: 'exercise',
+                                        moduleId: module.id ?? '',
+                                        lessonId: lesson.id ?? '',
+                                        exerciseId: exercise.id ?? '',
+                                      })
+                                    }
+                                  >
+                                    <span>{exercise.title}</span>
+                                    <span className="publisher-node-kind">
+                                      {t('publishers.structure.exercise')}
+                                    </span>
+                                  </button>
+                                  <div className="publisher-node-actions">
+                                    <button
+                                      type="button"
+                                      className="ghost-button"
+                                      data-test="publisher-exercise-move-up"
+                                      data-id={exercise.id}
+                                      data-module-id={module.id}
+                                      data-lesson-id={lesson.id}
+                                      onClick={() =>
+                                        moveExercise(
+                                          module.id ?? '',
+                                          lesson.id ?? '',
+                                          exercise.id ?? '',
+                                          -1,
+                                        )
+                                      }
+                                    >
+                                      {t('publishers.actions.moveUp')}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="ghost-button"
+                                      data-test="publisher-exercise-move-down"
+                                      data-id={exercise.id}
+                                      data-module-id={module.id}
+                                      data-lesson-id={lesson.id}
+                                      onClick={() =>
+                                        moveExercise(
+                                          module.id ?? '',
+                                          lesson.id ?? '',
+                                          exercise.id ?? '',
+                                          1,
+                                        )
+                                      }
+                                    >
+                                      {t('publishers.actions.moveDown')}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="ghost-button"
+                                      data-test="publisher-exercise-delete-tree"
+                                      data-id={exercise.id}
+                                      data-module-id={module.id}
+                                      data-lesson-id={lesson.id}
+                                      onClick={() =>
+                                        deleteExercise(
+                                          module.id ?? '',
+                                          lesson.id ?? '',
+                                          exercise.id ?? '',
+                                        )
+                                      }
+                                    >
+                                      x
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </Surface>
             </div>
-          </Surface>
+          ) : null}
         </aside>
 
-        <main className="publisher-workspace">
-          <Surface className="publisher-section publisher-panel">
-            <div className="publisher-toolbar">
-              <div>
-                <p className="muted">
-                  {t('publishers.editor.selection', {
-                    selection: selectionLabel,
-                  })}
-                </p>
-              </div>
-              <div className="publisher-toolbar-actions">
-                <div className="publisher-toggle" role="tablist">
-                  <button
-                    type="button"
-                    className={previewMode === 'edit' ? 'active' : ''}
-                    onClick={() => setPreviewMode('edit')}
-                  >
-                    {t('publishers.mode.edit')}
-                  </button>
-                  <button
-                    type="button"
-                    className={previewMode === 'preview' ? 'active' : ''}
-                    onClick={() => setPreviewMode('preview')}
-                  >
-                    {t('publishers.mode.preview')}
-                  </button>
-                </div>
-                {previewMode === 'preview' ? (
-                  <div className="publisher-toggle" role="tablist">
-                    <button
-                      type="button"
-                      className={previewScope === 'course' ? 'active' : ''}
-                      onClick={() => setPreviewScope('course')}
-                    >
-                      {t('publishers.preview.course')}
-                    </button>
-                    <button
-                      type="button"
-                      className={previewScope === 'selection' ? 'active' : ''}
-                      onClick={() => setPreviewScope('selection')}
-                    >
-                      {t('publishers.preview.selection')}
-                    </button>
-                  </div>
-                ) : null}
-              </div>
+        <main
+          className={
+            collapsedPanels.designer
+              ? 'publisher-column publisher-workspace collapsed'
+              : 'publisher-column publisher-workspace'
+          }
+        >
+          <div className="publisher-column-header">
+            <div className="section-header">
+              <h3>{t('publishers.columns.designer')}</h3>
+              <button
+                type="button"
+                className="ghost-button"
+                data-test="publisher-column-designer-toggle"
+                aria-expanded={!collapsedPanels.designer}
+                onClick={() => togglePanel('designer')}
+              >
+                {collapsedPanels.designer
+                  ? t('publishers.actions.expand')
+                  : t('publishers.actions.collapse')}
+              </button>
             </div>
+            <p className="muted">
+              {t('publishers.editor.selection', { selection: selectionLabel })}
+            </p>
+          </div>
 
-            {previewMode === 'edit' ? renderEditor() : renderPreview()}
-          </Surface>
+          {!collapsedPanels.designer ? (
+            <Surface className="publisher-section">{renderEditor()}</Surface>
+          ) : null}
         </main>
+
+        <aside
+          className={
+            collapsedPanels.preview
+              ? 'publisher-column publisher-column-preview collapsed'
+              : 'publisher-column publisher-column-preview'
+          }
+        >
+          <div className="publisher-column-header">
+            <div className="section-header">
+              <h3>{t('publishers.columns.preview')}</h3>
+              <button
+                type="button"
+                className="ghost-button"
+                data-test="publisher-column-preview-toggle"
+                aria-expanded={!collapsedPanels.preview}
+                onClick={() => togglePanel('preview')}
+              >
+                {collapsedPanels.preview
+                  ? t('publishers.actions.expand')
+                  : t('publishers.actions.collapse')}
+              </button>
+            </div>
+            <p className="muted">{t('publishers.preview.helper')}</p>
+          </div>
+
+          {!collapsedPanels.preview ? (
+            <Surface className="publisher-section">{renderPreview()}</Surface>
+          ) : null}
+        </aside>
       </div>
 
-      <p className="muted" style={{ marginTop: tokenVars.spacing.lg }}>
+      <p className="muted" style={{ marginTop: tokenVars.spacing.md }}>
         {t('publishers.preview.helper')}
       </p>
     </section>

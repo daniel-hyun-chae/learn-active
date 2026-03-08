@@ -12,7 +12,6 @@ export const courses: Course[] = [
     title: 'German Essentials: Greetings',
     description:
       'Build confidence with everyday German greetings and introductions.',
-    language: 'German',
     modules: [
       {
         id: 'module-german-1',
@@ -41,6 +40,7 @@ export const courses: Course[] = [
                 text: 'Read each sentence and fill in the missing words to complete the conversation.',
               },
             ],
+            contentPages: [],
             exercises: [
               {
                 id: 'exercise-german-1',
@@ -151,6 +151,5 @@ export const seedCourseRow = {
   id: courses[0].id,
   title: courses[0].title,
   description: courses[0].description,
-  language: courses[0].language,
   content: seedCourseContent,
 }

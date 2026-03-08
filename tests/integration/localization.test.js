@@ -9,7 +9,7 @@ function read(file) {
   return fs.readFileSync(path.join(root, file), 'utf8')
 }
 
-test('localization readiness @eval(EVAL-PLATFORM-INIT-002)', () => {
+test('localization readiness @eval(EVAL-PLATFORM-INIT-002,EVAL-AUTH-LOCAL-001)', () => {
   const webRoot = read('apps/web/src/routes/__root.tsx')
   const mobileApp = read('apps/learners-mobile/src/App.tsx')
   const resources = read('shared/shared-i18n/src/resources.ts')
@@ -20,4 +20,12 @@ test('localization readiness @eval(EVAL-PLATFORM-INIT-002)', () => {
   assert.ok(resources.includes('learners.home.title'))
   assert.ok(resources.includes('publishers.home.title'))
   assert.ok(resources.includes('mobile.learners.title'))
+  assert.ok(resources.includes('auth.title'))
+  assert.ok(resources.includes('auth.google'))
+  assert.ok(resources.includes('auth.magicLink.send'))
+  assert.ok(resources.includes('auth.logout'))
+  assert.ok(resources.includes('auth.signedInAs'))
+  assert.ok(resources.includes('router.notFound.title'))
+  assert.ok(resources.includes('router.notFound.body'))
+  assert.ok(resources.includes('router.notFound.cta'))
 })

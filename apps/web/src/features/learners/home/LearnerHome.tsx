@@ -8,7 +8,6 @@ type CourseSummary = {
   id: string
   title: string
   description: string
-  language: string
   modules: Array<{
     id: string
     lessons: Array<{ id: string }>
@@ -74,13 +73,7 @@ export function LearnerHome({ apiHealth, courses }: LearnerHomeProps) {
               <Surface key={course.id} data-test="course-card">
                 <div className="course-card">
                   <div>
-                    <p
-                      className="muted"
-                      style={{ marginTop: tokenVars.spacing.none }}
-                    >
-                      {course.language}
-                    </p>
-                    <h3 style={{ marginTop: tokenVars.spacing.sm }}>
+                    <h3 style={{ marginTop: tokenVars.spacing.none }}>
                       {course.title}
                     </h3>
                     <p className="muted">{course.description}</p>

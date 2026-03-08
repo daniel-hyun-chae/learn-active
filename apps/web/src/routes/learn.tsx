@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { LearnerHome } from '../features/learners/home/LearnerHome'
+import { requireWebSession } from '../features/auth/route-guard'
 import { fetchGraphQL } from '../shared/api/graphql'
 
 type LoaderData = {
@@ -8,7 +9,6 @@ type LoaderData = {
     id: string
     title: string
     description: string
-    language: string
     modules: Array<{
       id: string
       lessons: Array<{ id: string }>
@@ -34,7 +34,6 @@ async function loadLandingData(): Promise<LoaderData> {
           id
           title
           description
-          language
           modules {
             id
             lessons { id }
@@ -59,6 +58,9 @@ async function loadLandingData(): Promise<LoaderData> {
 }
 
 export const Route = createFileRoute('/learn')({
+  beforeLoad: async ({ location }) => {
+    await requireWebSession(location.pathname)
+  },
   loader: loadLandingData,
   component: LearnerHomeRoute,
 })

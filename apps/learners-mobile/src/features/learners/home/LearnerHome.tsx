@@ -118,7 +118,6 @@ export function LearnerHome({
           const lessonId = getFirstLessonId(course)
           return (
             <View key={course.id} style={styles.courseCard}>
-              <Text style={styles.courseLanguage}>{course.language}</Text>
               <Text style={styles.courseTitle}>{course.title}</Text>
               <Text style={styles.courseDescription}>{course.description}</Text>
               <Pressable
@@ -258,12 +257,6 @@ const styles = StyleSheet.create({
     padding: tokens.spacing.md,
     backgroundColor: tokens.color.surface,
     gap: tokens.spacing.xs,
-  },
-  courseLanguage: {
-    textTransform: 'uppercase',
-    fontSize: tokens.font.size.sm,
-    color: tokens.color.accent,
-    fontWeight: String(tokens.font.weight.medium) as '500',
   },
   courseTitle: {
     fontSize: tokens.font.size.lg,

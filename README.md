@@ -1,100 +1,94 @@
 # Learning Platform Monorepo
 
-This repo contains a single web app (learn + publish), a learners mobile app, the GraphQL API, and shared packages.
+This repo contains the web app (learn + publish), learners mobile app, GraphQL API, and shared packages.
 
-## Prerequisites
+## Dev container (recommended)
 
-- Node.js 20+
-- pnpm 9+
-- Expo Go (for mobile testing)
+Use this as the default workflow.
 
-## Install
+1. Open the repo in VS Code.
+2. Choose **Reopen in Container**.
+3. Start Supabase local services:
 
 ```
-pnpm install
+pnpm db:up
 ```
 
-## Development
+`pnpm db:up` excludes Supabase edge runtime by default to keep startup reliable in offline or TLS-inspected environments. Include it when needed with:
 
-Run everything (web + API):
+```
+pnpm db:up -- --with-edge-runtime
+```
+
+4. Run development startup:
 
 ```
 pnpm dev
 ```
 
-Run local smoke check (build + start + HTTP checks):
+`pnpm dev` is the single startup command for development. It:
+
+- waits for database readiness,
+- applies Supabase SQL migrations (fail-hard),
+- starts API + web dev servers,
+- verifies health before reporting success.
+
+## Database Workflow (Supabase)
+
+Schema source of truth is `supabase/migrations/*`.
+
+Common commands:
 
 ```
-pnpm smoke:local
+pnpm db:up
+pnpm db:status
+pnpm db:logs
+pnpm db:push
+pnpm db:reset -- --yes
 ```
 
-Run dev stack with checks (dev servers + health checks):
+Recommended local flow:
 
-```
-pnpm dev:stack
-```
+1. `pnpm db:up`
+2. `pnpm db:reset -- --yes` (or `pnpm db:push` for non-destructive apply)
+3. `pnpm dev`
 
-Verify setup and run a local smoke test:
+## Production Database
+
+- Production uses Supabase-managed PostgreSQL.
+- Store real production credentials only in deployment/platform secret storage.
+- Commit only placeholders in `.env.production`.
+
+## What Is Required on Host
+
+For dev mode in devcontainer, you do not need host Node or pnpm.
+
+Required on host:
+
+- Docker / compatible container runtime
+- VS Code + Dev Containers extension
+
+## Verification
+
+Run these checks to verify app behavior and startup reliability:
 
 ```
 pnpm verify:setup
+pnpm browser:check
 pnpm smoke:local
+pnpm test:unit
+pnpm test:integration
+pnpm test:e2e
 ```
 
-Dev container (recommended):
+## Development Commands
 
-- Install the Dev Containers extension for VS Code.
-- Open the repo and choose "Reopen in Container".
-- Run the dev stack inside the container:
+- `pnpm dev` - recommended full dev startup (setup + migrate + run + health checks)
+- `pnpm dev:stack` - start API + web dev servers with health checks (used by `pnpm dev`)
+- `pnpm setup:local` - fail-hard DB wait + migration step (used by `pnpm dev`)
+- `pnpm dev:apps` - raw Turbo parallel app dev tasks (no DB bootstrap)
 
-```
-pnpm dev:stack
-```
-
-The devcontainer keeps Postgres data persistent and runs `pnpm --filter @app/api db:migrate` on start.
-
-OpenCode is installed in the devcontainer. Run it with:
-
-```
-opencode
-```
-
-If OpenCode is not found, rebuild the devcontainer to refresh the image.
-
-If your environment blocks direct downloads, you can re-run the installer script:
-
-```
-sh scripts/devcontainer-install-opencode.sh
-```
-
-You can also provide a custom CA certificate or allow insecure TLS for the script:
-
-```
-OPENCODE_CA_CERT=/path/to/ca.crt sh scripts/devcontainer-install-opencode.sh
-OPENCODE_INSTALL_INSECURE=1 sh scripts/devcontainer-install-opencode.sh
-```
-
-When the data model changes, generate a migration and re-apply it:
-
-```
-pnpm --filter @app/api db:generate
-pnpm --filter @app/api db:migrate
-```
-
-Run everything in Docker (production-style):
-
-```
-pnpm setup
-pnpm verify:startup
-docker compose build --no-cache
-docker compose up
-```
-
-Notes:
-
-- Docker builds use multi-stage images and include only production dependencies at runtime.
-
-Run a specific app:
+Run specific apps:
 
 ```
 pnpm --filter @app/web dev
@@ -107,23 +101,94 @@ pnpm --filter @app/learners-mobile start
 - Web app (learn + publish): http://localhost:4100
 - GraphQL API: http://localhost:4000/graphql
 
-## Environment Variables
+## Authentication (Supabase, local-first)
 
-- `DATABASE_URL` (optional for now; required when running migrations or DB-backed resolvers)
-- `GRAPHQL_ENDPOINT` (server-side GraphQL endpoint for web apps)
-- `VITE_GRAPHQL_ENDPOINT` (client-side GraphQL endpoint for web apps)
-- `EXPO_PUBLIC_GRAPHQL_ENDPOINT` (mobile GraphQL endpoint when running the Expo app on device)
+This phase introduces identity/authentication foundations only.
 
-Notes:
+Supported sign-in methods in v1:
 
-- Do not commit `.env` (it is gitignored). Use `.env.example` as the template.
+- Google OAuth
+- Magic link
 
-## Tests
+Not enabled in v1:
+
+- Email/password login
+
+### Local auth setup
+
+1. Start local Supabase services:
 
 ```
-pnpm test:unit
-pnpm test:integration
-pnpm test:e2e
+pnpm db:up
+```
+
+2. Set local auth env values in `.env.local` from local Supabase status output:
+
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+
+3. For browser/mobile clients, provide aliases as needed:
+
+- Web: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+- Mobile: `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`
+
+4. Google OAuth local provider wiring uses placeholders only:
+
+- `SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID`
+- `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET`
+
+If Google provider setup cannot be fully automated locally, Google initiation paths are still implemented and can be validated up to provider redirect.
+
+### Session and API behavior
+
+- Web/mobile bootstrap and restore session state from Supabase Auth.
+- Clients send bearer access tokens to the API for protected operations.
+- API verifies bearer tokens against Supabase JWKS and exposes `request.user.id` on authenticated requests.
+- Course GraphQL operations are protected and reject unauthenticated requests.
+
+### Local auth testing notes
+
+- Magic-link flow can be exercised against local Supabase.
+- Google OAuth requires local provider credentials and redirect setup; keep credentials in local secret storage only.
+- Production Supabase secrets are not required for local implementation/testing.
+
+## Environment Variables
+
+- `DATABASE_URL` (local default: `postgresql://postgres:postgres@localhost:54322/postgres`)
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `VITE_SUPABASE_URL` (web runtime alias)
+- `VITE_SUPABASE_ANON_KEY` (web runtime alias)
+- `EXPO_PUBLIC_SUPABASE_URL` (mobile runtime alias)
+- `EXPO_PUBLIC_SUPABASE_ANON_KEY` (mobile runtime alias)
+- `SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID` (local/provider setup)
+- `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET` (local/provider setup)
+- `GRAPHQL_ENDPOINT` (server-side GraphQL endpoint for web apps)
+- `VITE_GRAPHQL_ENDPOINT` (client-side GraphQL endpoint for web apps)
+- `EXPO_PUBLIC_GRAPHQL_ENDPOINT` (mobile GraphQL endpoint for Expo)
+
+Do not commit real secrets. Use:
+
+- `.env.example` as template
+- `.env.production` as placeholder-only template
+- `.env.local` for local/private values
+
+## OpenCode in Devcontainer
+
+OpenCode is installed in the devcontainer:
+
+```
+opencode
+```
+
+## Docker Startup (Production-Style)
+
+```
+pnpm setup
+pnpm verify:startup
+docker compose build --no-cache
+docker compose up
 ```
 
 ## Repo Layout
@@ -141,8 +206,3 @@ shared/
   shared-config/
   shared-graphql/
 ```
-
-## Notes
-
-- Mobile app runs via Expo. Use Expo Go or a simulator.
-- The API boots without `DATABASE_URL`, but DB access will be disabled until it is set.

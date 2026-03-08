@@ -19,21 +19,51 @@ test('course list wiring @eval(EVAL-LEARNERS-COURSE-001)', () => {
   const courseSeed = read('apps/api/src/features/course/seed.ts')
 
   assert.ok(courseSeed.includes('German Essentials: Greetings'))
+  assert.ok(!courseSeed.includes('language:'))
   assert.ok(learnerHome.includes('course-card'))
   assert.ok(learnerHome.includes('course-link'))
   assert.ok(mobileHome.includes('learners.courses.start'))
 })
 
-test('lesson flow wiring @eval(EVAL-LEARNERS-COURSE-002)', () => {
+test('lesson block navigation wiring @eval(EVAL-LEARNERS-COURSE-002,EVAL-LEARNERS-COURSE-005)', () => {
   const lessonView = read(
     'apps/web/src/features/learners/course/LessonView.tsx',
+  )
+  const lessonRoute = read(
+    'apps/web/src/routes/courses.$courseId.lessons.$lessonId.tsx',
   )
   const mobileLessonView = read(
     'apps/learners-mobile/src/features/learners/course/LessonView.tsx',
   )
+
   assert.ok(lessonView.includes('lesson-content'))
-  assert.ok(lessonView.includes('lesson-start-exercise'))
-  assert.ok(mobileLessonView.includes('learners.lesson.startExercise'))
+  assert.ok(lessonView.includes("type: 'summary'"))
+  assert.ok(lessonView.includes("type: 'contentPage'"))
+  assert.ok(lessonView.includes("type: 'exercise'"))
+  assert.ok(lessonView.includes("'lesson-summary'"))
+  assert.ok(lessonView.includes('data-test="lesson-content-page"'))
+  assert.ok(!lessonView.includes('lesson-start-exercise'))
+  assert.ok(!lessonView.includes('learners.lesson.contentTab'))
+
+  assert.ok(lessonRoute.includes('learning-structure-tree'))
+  assert.ok(lessonRoute.includes('learning-structure-toggle'))
+  assert.ok(lessonRoute.includes('learning-structure-content-page'))
+  assert.ok(lessonRoute.includes('learning-structure-exercise'))
+  assert.ok(lessonRoute.includes("search={{ block: 'summary' }}"))
+  assert.ok(lessonRoute.includes("block: 'contentPage'"))
+  assert.ok(lessonRoute.includes("block: 'exercise'"))
+  assert.ok(lessonRoute.includes('learners.structure.title'))
+  assert.ok(lessonRoute.includes('learners.structure.summary'))
+  assert.ok(lessonRoute.includes('learners.structure.module'))
+  assert.ok(lessonRoute.includes('learners.structure.contentPage'))
+  assert.ok(lessonRoute.includes('learners.structure.exercise'))
+
+  assert.ok(mobileLessonView.includes('learners.structure.summary'))
+  assert.ok(mobileLessonView.includes('learners.structure.lesson'))
+  assert.ok(mobileLessonView.includes("type: 'contentPage'"))
+  assert.ok(mobileLessonView.includes("type: 'exercise'"))
+  assert.ok(mobileLessonView.includes('learners.lesson.contentPageMissing'))
+  assert.ok(!mobileLessonView.includes('learners.lesson.startExercise'))
 })
 
 test('fill in blank exercise wiring @eval(EVAL-LEARNERS-COURSE-003)', () => {
