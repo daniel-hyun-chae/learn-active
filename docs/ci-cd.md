@@ -49,6 +49,11 @@ Workflows live in `.github/workflows/`:
 
 Staging and production use separate Cloudflare resources.
 
+Hosted environment safety baseline:
+
+- `localhost`, `127.0.0.1`, and `::1` URLs are local-only and must not be used by staging or production secrets.
+- Hosted environment URLs must use `https`.
+
 ### Cloudflare Workers
 
 - Staging: `course-api-staging`
@@ -90,6 +95,52 @@ Store these in GitHub Environments:
   - `SUPABASE_PUBLISHABLE_KEY_PROD`
   - `API_URL_PROD`
   - `WEB_URL_PROD`
+
+## Deployment environment contract validation
+
+Both deploy workflows execute `pnpm validate:deploy-env` before deploy steps.
+
+- Staging: `pnpm validate:deploy-env -- --target staging`
+- Production: `pnpm validate:deploy-env -- --target production`
+
+Validation checks:
+
+- Required environment secrets are present.
+- Supabase project URL, API URL, and web URL are absolute `https` URLs.
+- Hosted URLs do not target localhost variants.
+- Expected hosted auth callback target is printed as `WEB_URL_<ENV>/auth`.
+
+If validation fails, deploy is blocked.
+
+## Built web endpoint verification
+
+Both web deploy jobs verify the compiled web assets contain the expected GraphQL endpoint before deploying to Cloudflare Pages.
+
+- Staging runs:
+  - `node scripts/verify-web-build-endpoint.mjs --dist apps/web/dist --expected "$API_URL_STAGING" --env staging`
+- Production runs:
+  - `node scripts/verify-web-build-endpoint.mjs --dist apps/web/dist --expected "$API_URL_PROD" --env production`
+
+Verification behavior:
+
+- Prints the expected endpoint and candidate embedded URL values discovered in build artifacts.
+- Prints the built file paths that contain the expected endpoint.
+- Fails deployment if the expected endpoint is not found in the compiled assets.
+
+This makes secret/config updates observable and helps diagnose stale or incorrect endpoint bundles before deploy.
+
+## Supabase Auth hosted redirect configuration
+
+Supabase hosted Auth settings must be configured per hosted environment in the Supabase dashboard.
+
+- Staging:
+  - `site_url`: `WEB_URL_STAGING/auth`
+  - Redirect allowlist includes `WEB_URL_STAGING/auth`
+- Production:
+  - `site_url`: `WEB_URL_PROD/auth`
+  - Redirect allowlist includes `WEB_URL_PROD/auth`
+
+Localhost callback URLs are local development only and must not be configured as hosted staging or production redirect targets.
 
 Where to obtain values:
 

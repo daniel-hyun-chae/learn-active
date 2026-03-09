@@ -7,6 +7,8 @@ type RuntimeWithConfig = typeof globalThis & {
   __SUPABASE_ANON_KEY__?: string
 }
 
+type RuntimeStage = 'local' | 'staging' | 'production'
+
 export type SupabaseRuntimeConfig = {
   supabaseUrl: string
   supabaseAnonKey: string
@@ -32,6 +34,64 @@ function getImportMetaEnvValue(...keys: string[]) {
   }
 
   return undefined
+}
+
+function getRuntimeStage(): RuntimeStage {
+  const stage = getImportMetaEnvValue('VITE_APP_ENV', 'APP_ENV')
+  if (stage === 'staging' || stage === 'production' || stage === 'local') {
+    return stage
+  }
+
+  return 'local'
+}
+
+function isLocalhostHost(hostname: string) {
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname === '[::1]'
+  )
+}
+
+function assertHostedUrl(name: string, value: string, stage: RuntimeStage) {
+  let parsed: URL
+  try {
+    parsed = new URL(value)
+  } catch {
+    throw new Error(
+      `[web-runtime] ${name} must be an absolute URL for ${stage}. Received: ${value}`,
+    )
+  }
+
+  if (parsed.protocol !== 'https:') {
+    throw new Error(
+      `[web-runtime] ${name} must use https for ${stage}. Received: ${value}`,
+    )
+  }
+
+  if (isLocalhostHost(parsed.hostname.toLowerCase())) {
+    throw new Error(
+      `[web-runtime] ${name} must not target localhost for ${stage}. Received: ${value}`,
+    )
+  }
+}
+
+function assertWebRuntimeConfig(config: WebRuntimeConfig) {
+  const stage = getRuntimeStage()
+  if (stage === 'local') {
+    return
+  }
+
+  assertHostedUrl('graphqlEndpoint', config.graphqlEndpoint, stage)
+
+  if (!config.supabase) {
+    throw new Error(
+      `[web-runtime] Supabase runtime config is required for ${stage} environment.`,
+    )
+  }
+
+  assertHostedUrl('supabaseUrl', config.supabase.supabaseUrl, stage)
 }
 
 export function getRuntimeEndpoint() {
@@ -75,7 +135,7 @@ export function isWebAuthBypassEnabled() {
 }
 
 export function getWebRuntimeConfig(): WebRuntimeConfig {
-  return {
+  const config: WebRuntimeConfig = {
     theme:
       getRuntime().__APP_THEME__ ??
       getImportMetaEnvValue('VITE_APP_THEME') ??
@@ -84,4 +144,8 @@ export function getWebRuntimeConfig(): WebRuntimeConfig {
     supabase: getSupabaseRuntimeConfig(),
     authBypassForE2E: isWebAuthBypassEnabled(),
   }
+
+  assertWebRuntimeConfig(config)
+
+  return config
 }

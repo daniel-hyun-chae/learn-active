@@ -90,26 +90,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Validate staging environment secrets
+      - name: Validate staging deployment environment contract
         env:
-          SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL_STAGING }}
-          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY_STAGING }}
-          API_URL: ${{ secrets.API_URL_STAGING }}
-          WEB_URL: ${{ secrets.WEB_URL_STAGING }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          required=(SUPABASE_PROJECT_URL SUPABASE_PUBLISHABLE_KEY API_URL WEB_URL)
-          missing=0
-          for name in "${required[@]}"; do
-            if [[ -z "${!name:-}" ]]; then
-              echo "Missing required staging secret: $name"
-              missing=1
-            fi
-          done
-          if [[ "$missing" -ne 0 ]]; then
-            exit 1
-          fi
+          SUPABASE_PROJECT_URL_STAGING: ${{ secrets.SUPABASE_PROJECT_URL_STAGING }}
+          SUPABASE_PUBLISHABLE_KEY_STAGING: ${{ secrets.SUPABASE_PUBLISHABLE_KEY_STAGING }}
+          API_URL_STAGING: ${{ secrets.API_URL_STAGING }}
+          WEB_URL_STAGING: ${{ secrets.WEB_URL_STAGING }}
+        run: pnpm validate:deploy-env -- --target staging
 
       - name: Deploy API Worker to staging
         env:
@@ -142,34 +129,27 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Validate staging environment secrets
+      - name: Validate staging deployment environment contract
         env:
-          SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL_STAGING }}
-          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY_STAGING }}
-          API_URL: ${{ secrets.API_URL_STAGING }}
-          WEB_URL: ${{ secrets.WEB_URL_STAGING }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          required=(SUPABASE_PROJECT_URL SUPABASE_PUBLISHABLE_KEY API_URL WEB_URL)
-          missing=0
-          for name in "${required[@]}"; do
-            if [[ -z "${!name:-}" ]]; then
-              echo "Missing required staging secret: $name"
-              missing=1
-            fi
-          done
-          if [[ "$missing" -ne 0 ]]; then
-            exit 1
-          fi
+          SUPABASE_PROJECT_URL_STAGING: ${{ secrets.SUPABASE_PROJECT_URL_STAGING }}
+          SUPABASE_PUBLISHABLE_KEY_STAGING: ${{ secrets.SUPABASE_PUBLISHABLE_KEY_STAGING }}
+          API_URL_STAGING: ${{ secrets.API_URL_STAGING }}
+          WEB_URL_STAGING: ${{ secrets.WEB_URL_STAGING }}
+        run: pnpm validate:deploy-env -- --target staging
 
       - name: Build web for staging
         env:
           APP_ENV: staging
+          VITE_APP_ENV: staging
           VITE_GRAPHQL_ENDPOINT: ${{ secrets.API_URL_STAGING }}
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_PROJECT_URL_STAGING }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY_STAGING }}
         run: pnpm --filter @app/web build
+
+      - name: Verify built web GraphQL endpoint for staging
+        env:
+          EXPECTED_GRAPHQL_ENDPOINT: ${{ secrets.API_URL_STAGING }}
+        run: node scripts/verify-web-build-endpoint.mjs --dist apps/web/dist --expected "$EXPECTED_GRAPHQL_ENDPOINT" --env staging
 
       - name: Deploy web to staging Pages
         env:
