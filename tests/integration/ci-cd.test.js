@@ -2,6 +2,7 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
+const { execFileSync } = require('node:child_process')
 
 const root = path.resolve(__dirname, '..', '..')
 
@@ -48,6 +49,10 @@ test('staging deployment workflow wiring @eval(EVAL-PLATFORM-CICD-002,EVAL-PLATF
   assert.ok(workflow.includes('SUPABASE_PUBLISHABLE_KEY_STAGING'))
   assert.ok(workflow.includes('API_URL_STAGING'))
   assert.ok(workflow.includes('WEB_URL_STAGING'))
+  assert.ok(workflow.includes('pnpm validate:deploy-env -- --target staging'))
+  assert.ok(workflow.includes('Verify built web GraphQL endpoint for staging'))
+  assert.ok(workflow.includes('verify-web-build-endpoint.mjs'))
+  assert.ok(workflow.includes('VITE_APP_ENV: staging'))
   assert.ok(workflow.includes('deploy:worker:staging'))
   assert.ok(workflow.includes('deploy:pages:staging'))
 })
@@ -65,10 +70,128 @@ test('production deploy and rollback workflow wiring @eval(EVAL-PLATFORM-CICD-00
   assert.ok(workflow.includes('SUPABASE_PUBLISHABLE_KEY_PROD'))
   assert.ok(workflow.includes('API_URL_PROD'))
   assert.ok(workflow.includes('WEB_URL_PROD'))
+  assert.ok(
+    workflow.includes('pnpm validate:deploy-env -- --target production'),
+  )
+  assert.ok(
+    workflow.includes('Verify built web GraphQL endpoint for production'),
+  )
+  assert.ok(workflow.includes('verify-web-build-endpoint.mjs'))
+  assert.ok(workflow.includes('VITE_APP_ENV: production'))
   assert.ok(apiPackage.includes('deploy:worker:prod'))
   assert.ok(apiPackage.includes('--name course-api'))
   assert.ok(webPackage.includes('deploy:pages:prod'))
   assert.ok(webPackage.includes('--project-name course-web'))
+})
+
+test('deployment env validation enforces hosted URL contract @eval(EVAL-PLATFORM-CICD-006)', () => {
+  const script = path.join(root, 'scripts', 'validate-deploy-env.mjs')
+
+  const validOutput = execFileSync(
+    process.execPath,
+    [script, '--target', 'staging'],
+    {
+      cwd: root,
+      env: {
+        ...process.env,
+        SUPABASE_PROJECT_URL_STAGING: 'https://staging-project.supabase.co',
+        SUPABASE_PUBLISHABLE_KEY_STAGING: 'staging-publishable-key',
+        API_URL_STAGING: 'https://api-staging.example.com/graphql',
+        WEB_URL_STAGING: 'https://staging.example.com',
+      },
+      encoding: 'utf8',
+    },
+  )
+  assert.ok(validOutput.includes('staging environment contract is valid'))
+  assert.ok(validOutput.includes('https://staging.example.com/auth'))
+
+  assert.throws(
+    () => {
+      execFileSync(process.execPath, [script, '--target', 'staging'], {
+        cwd: root,
+        env: {
+          ...process.env,
+          SUPABASE_PROJECT_URL_STAGING: 'https://staging-project.supabase.co',
+          SUPABASE_PUBLISHABLE_KEY_STAGING: 'staging-publishable-key',
+          API_URL_STAGING: 'https://api-staging.example.com/graphql',
+          WEB_URL_STAGING: 'http://localhost:4100',
+        },
+        encoding: 'utf8',
+      })
+    },
+    {
+      message: /must use https|must not target localhost/,
+    },
+  )
+})
+
+test('built web endpoint verification script validates compiled artifacts @eval(EVAL-PLATFORM-CICD-007)', () => {
+  const script = path.join(root, 'scripts', 'verify-web-build-endpoint.mjs')
+  const tempRoot = fs.mkdtempSync(path.join(root, '.tmp-verify-web-endpoint-'))
+
+  try {
+    const okDir = path.join(tempRoot, 'ok')
+    fs.mkdirSync(okDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(okDir, 'index.js'),
+      'const endpoint = "https://course-api-staging.example.workers.dev/graphql";',
+      'utf8',
+    )
+
+    const okOutput = execFileSync(
+      process.execPath,
+      [
+        script,
+        '--dist',
+        okDir,
+        '--expected',
+        'https://course-api-staging.example.workers.dev/graphql',
+        '--env',
+        'staging',
+      ],
+      {
+        cwd: root,
+        encoding: 'utf8',
+      },
+    )
+
+    assert.ok(okOutput.includes('Expected GraphQL endpoint'))
+    assert.ok(okOutput.includes('Endpoint found in artifact'))
+
+    const badDir = path.join(tempRoot, 'bad')
+    fs.mkdirSync(badDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(badDir, 'index.js'),
+      'const endpoint = "/graphql";',
+      'utf8',
+    )
+
+    assert.throws(
+      () => {
+        execFileSync(
+          process.execPath,
+          [
+            script,
+            '--dist',
+            badDir,
+            '--expected',
+            'https://course-api-staging.example.workers.dev/graphql',
+            '--env',
+            'staging',
+          ],
+          {
+            cwd: root,
+            encoding: 'utf8',
+          },
+        )
+      },
+      {
+        message: /Expected endpoint was not found/,
+      },
+    )
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true })
+  }
 })
 
 test('cicd documentation and readme linking @eval(EVAL-PLATFORM-CICD-005)', () => {
@@ -87,5 +210,8 @@ test('cicd documentation and readme linking @eval(EVAL-PLATFORM-CICD-005)', () =
   assert.ok(docs.includes('course-web'))
   assert.ok(docs.includes('CLOUDFLARE_API_TOKEN'))
   assert.ok(docs.includes('CLOUDFLARE_ACCOUNT_ID'))
+  assert.ok(docs.includes('validate:deploy-env'))
+  assert.ok(docs.includes('localhost'))
+  assert.ok(docs.includes('WEB_URL_STAGING/auth'))
   assert.ok(readme.includes('docs/ci-cd.md'))
 })

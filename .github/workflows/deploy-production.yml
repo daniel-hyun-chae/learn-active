@@ -74,26 +74,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Validate production environment secrets
+      - name: Validate production deployment environment contract
         env:
-          SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL_PROD }}
-          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY_PROD }}
-          API_URL: ${{ secrets.API_URL_PROD }}
-          WEB_URL: ${{ secrets.WEB_URL_PROD }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          required=(SUPABASE_PROJECT_URL SUPABASE_PUBLISHABLE_KEY API_URL WEB_URL)
-          missing=0
-          for name in "${required[@]}"; do
-            if [[ -z "${!name:-}" ]]; then
-              echo "Missing required production secret: $name"
-              missing=1
-            fi
-          done
-          if [[ "$missing" -ne 0 ]]; then
-            exit 1
-          fi
+          SUPABASE_PROJECT_URL_PROD: ${{ secrets.SUPABASE_PROJECT_URL_PROD }}
+          SUPABASE_PUBLISHABLE_KEY_PROD: ${{ secrets.SUPABASE_PUBLISHABLE_KEY_PROD }}
+          API_URL_PROD: ${{ secrets.API_URL_PROD }}
+          WEB_URL_PROD: ${{ secrets.WEB_URL_PROD }}
+        run: pnpm validate:deploy-env -- --target production
 
       - name: Deploy API Worker to production
         env:
@@ -127,34 +114,27 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Validate production environment secrets
+      - name: Validate production deployment environment contract
         env:
-          SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL_PROD }}
-          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY_PROD }}
-          API_URL: ${{ secrets.API_URL_PROD }}
-          WEB_URL: ${{ secrets.WEB_URL_PROD }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          required=(SUPABASE_PROJECT_URL SUPABASE_PUBLISHABLE_KEY API_URL WEB_URL)
-          missing=0
-          for name in "${required[@]}"; do
-            if [[ -z "${!name:-}" ]]; then
-              echo "Missing required production secret: $name"
-              missing=1
-            fi
-          done
-          if [[ "$missing" -ne 0 ]]; then
-            exit 1
-          fi
+          SUPABASE_PROJECT_URL_PROD: ${{ secrets.SUPABASE_PROJECT_URL_PROD }}
+          SUPABASE_PUBLISHABLE_KEY_PROD: ${{ secrets.SUPABASE_PUBLISHABLE_KEY_PROD }}
+          API_URL_PROD: ${{ secrets.API_URL_PROD }}
+          WEB_URL_PROD: ${{ secrets.WEB_URL_PROD }}
+        run: pnpm validate:deploy-env -- --target production
 
       - name: Build web for production
         env:
           APP_ENV: production
+          VITE_APP_ENV: production
           VITE_GRAPHQL_ENDPOINT: ${{ secrets.API_URL_PROD }}
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_PROJECT_URL_PROD }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY_PROD }}
         run: pnpm --filter @app/web build
+
+      - name: Verify built web GraphQL endpoint for production
+        env:
+          EXPECTED_GRAPHQL_ENDPOINT: ${{ secrets.API_URL_PROD }}
+        run: node scripts/verify-web-build-endpoint.mjs --dist apps/web/dist --expected "$EXPECTED_GRAPHQL_ENDPOINT" --env production
 
       - name: Deploy web to production Pages
         env:

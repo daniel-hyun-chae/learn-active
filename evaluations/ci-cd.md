@@ -15,7 +15,8 @@ Criteria:
 - A deploy workflow is triggered by pushes to `main`.
 - API deploy targets Cloudflare Worker `course-api-staging`.
 - Web deploy targets Cloudflare Pages project `course-web-staging`.
-- Deploy jobs validate required staging secrets before deployment.
+- Deploy jobs validate staging environment contract before deployment.
+- Staging deployment requires `pnpm validate:deploy-env -- --target staging` to pass.
 
 ## EVAL-PLATFORM-CICD-003: Manual production deployment and rollback
 
@@ -26,6 +27,7 @@ Criteria:
 - `commit_ref` is validated as reachable from `main` before deployment.
 - API deploy targets Cloudflare Worker `course-api`.
 - Web deploy targets Cloudflare Pages project `course-web`.
+- Production deployment requires `pnpm validate:deploy-env -- --target production` to pass.
 
 ## EVAL-PLATFORM-CICD-004: Monorepo-aware deploy behavior
 
@@ -46,3 +48,23 @@ Criteria:
 - Documentation lists required repository and environment secrets.
 - Documentation explains manual production trigger and previous-commit redeploy/rollback.
 - README links to CI/CD documentation.
+
+## EVAL-PLATFORM-CICD-006: Hosted environment URL and auth redirect safety
+
+Goal: Hosted staging/production deployments reject local-only URL targets and keep auth redirect expectations explicit.
+Criteria:
+
+- Hosted deployment validation rejects `localhost`, `127.0.0.1`, and `::1` targets for API, web, and Supabase project URLs.
+- Hosted deployment validation requires HTTPS URLs for API, web, and Supabase project URLs.
+- CI/CD wiring executes environment-contract validation before staging and production deploy steps.
+- Documentation defines expected hosted Supabase auth callback shape as `WEB_URL_<ENV>/auth` and reserves localhost redirects for local development only.
+
+## EVAL-PLATFORM-CICD-007: Built web endpoint verification before Pages deploy
+
+Goal: Deployment logs must expose the bundled web GraphQL endpoint and block deploy when the expected endpoint was not embedded in build artifacts.
+Criteria:
+
+- Staging web deploy runs built-artifact endpoint verification after build and before Pages deploy.
+- Production web deploy runs built-artifact endpoint verification after build and before Pages deploy.
+- Verification logs include expected endpoint and matched artifact path(s).
+- Verification fails deployment when expected endpoint is not found in built assets.
