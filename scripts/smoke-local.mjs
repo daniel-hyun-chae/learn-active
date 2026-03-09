@@ -117,23 +117,8 @@ async function assertLanding(url) {
     throw new Error(`Landing page returned ${response.status}`)
   }
   const html = await response.text()
-  if (!html.includes('data-test="api-health"')) {
-    throw new Error('Landing page missing api-health marker')
-  }
-
-  const statusMatch = html.match(
-    /data-test=["']api-health["'][^>]*data-status=["']([^"']+)["']/i,
-  )
-  const status = statusMatch?.[1]
-  if (!status) {
-    throw new Error('Landing page missing api-health status')
-  }
-  if (status !== 'ok') {
-    throw new Error(`Landing page reported API status ${status}`)
-  }
-
-  if (!html.includes('data-test="course-card"')) {
-    throw new Error('Landing page missing course cards')
+  if (!html.includes('<div id="app"></div>')) {
+    throw new Error('Landing page missing app root container')
   }
 
   const cssMatch = html.match(
@@ -178,35 +163,82 @@ async function waitForLanding(url, timeoutMs = 30000) {
       await new Promise((resolve) => setTimeout(resolve, 1000))
     }
   }
-  throw new Error('Landing page did not report API status ok')
+  throw new Error('Landing page did not become ready')
 }
 
 async function fetchLessonPath(apiPort) {
-  const response = await fetch(`http://localhost:${apiPort}/graphql`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      query: `query SmokeCourse {
-        courses {
-          id
-          modules { lessons { id } }
-        }
-      }`,
-    }),
-  })
+  const endpoint = `http://localhost:${apiPort}/graphql`
 
-  if (!response.ok) {
-    throw new Error('Failed to fetch courses for lesson path')
+  async function queryCourses() {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        query: `query SmokeCourse {
+          courses {
+            id
+            modules { lessons { id } }
+          }
+        }`,
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch courses for lesson path')
+    }
+
+    return response.json()
   }
 
-  const payload = await response.json()
-  const course = payload?.data?.courses?.[0]
-  const lesson = course?.modules?.[0]?.lessons?.[0]
+  async function seedSampleCourse() {
+    await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        query: 'mutation SmokeSeed { seedSampleCourse { id } }',
+      }),
+    })
+  }
+
+  let payload = await queryCourses()
+  let course = payload?.data?.courses?.[0]
+  let lesson = course?.modules?.[0]?.lessons?.[0]
+
+  if (!course?.id || !lesson?.id) {
+    await seedSampleCourse()
+    payload = await queryCourses()
+    course = payload?.data?.courses?.[0]
+    lesson = course?.modules?.[0]?.lessons?.[0]
+  }
+
   if (!course?.id || !lesson?.id) {
     throw new Error('No course/lesson available for smoke check')
   }
 
   return `/courses/${course.id}/lessons/${lesson.id}`
+}
+
+async function assertMobileApiHealth(apiPort) {
+  const endpoint =
+    process.env.EXPO_PUBLIC_GRAPHQL_ENDPOINT ??
+    `http://localhost:${apiPort}/graphql`
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ query: '{ health }' }),
+  })
+
+  if (!response.ok) {
+    throw new Error(
+      `Mobile GraphQL endpoint ${endpoint} returned ${response.status}`,
+    )
+  }
+
+  const payload = await response.json()
+  if (payload?.data?.health !== 'ok') {
+    throw new Error('Mobile GraphQL health check did not return ok')
+  }
 }
 
 async function assertLesson(url) {
@@ -215,15 +247,8 @@ async function assertLesson(url) {
     throw new Error(`Lesson page returned ${response.status}`)
   }
   const html = await response.text()
-  if (!html.includes('data-test="lesson-view"')) {
-    throw new Error('Lesson page missing lesson view')
-  }
-  if (
-    !html.includes('data-test="lesson-content"') &&
-    !html.includes('data-test="lesson-summary"') &&
-    !html.includes('data-test="lesson-content-page-body"')
-  ) {
-    throw new Error('Lesson page missing lesson content')
+  if (!html.includes('<div id="app"></div>')) {
+    throw new Error('Lesson route missing app root container')
   }
 }
 
@@ -236,36 +261,43 @@ function shutdown(processes) {
 }
 
 console.log('[smoke] Building apps...')
-const build = run(pnpmCmd, ['build'], { shell: process.platform === 'win32' })
+const reserved = new Set()
+const preferredApiPort = Number(process.env.API_PORT ?? 4000)
+const preferredWebPort = Number(process.env.WEB_PORT ?? 4100)
+const dynamicSmokePorts =
+  process.env.DYNAMIC_SMOKE_PORTS === '1' ||
+  process.env.DYNAMIC_DEV_PORTS === '1'
+
+let apiPort
+let webPort
+
+if (dynamicSmokePorts) {
+  apiPort = await findAvailablePort(preferredApiPort, reserved)
+  reserved.add(apiPort)
+  webPort = await findAvailablePort(preferredWebPort, reserved)
+  reserved.add(webPort)
+} else {
+  if (preferredApiPort === preferredWebPort) {
+    throw new Error('API_PORT and WEB_PORT must be different values')
+  }
+  await assertPortAvailable(preferredApiPort, 'API')
+  await assertPortAvailable(preferredWebPort, 'Web')
+  apiPort = preferredApiPort
+  webPort = preferredWebPort
+}
+
+const build = run(pnpmCmd, ['build'], {
+  shell: process.platform === 'win32',
+  env: {
+    ...process.env,
+    VITE_GRAPHQL_ENDPOINT: `http://localhost:${apiPort}/graphql`,
+    VITE_AUTH_BYPASS_FOR_E2E: process.env.VITE_AUTH_BYPASS_FOR_E2E ?? 'true',
+  },
+})
 
 build.on('exit', async (code) => {
   if (code !== 0) {
     process.exit(code ?? 1)
-  }
-
-  const reserved = new Set()
-  const preferredApiPort = Number(process.env.API_PORT ?? 4000)
-  const preferredWebPort = Number(process.env.WEB_PORT ?? 4100)
-  const dynamicSmokePorts =
-    process.env.DYNAMIC_SMOKE_PORTS === '1' ||
-    process.env.DYNAMIC_DEV_PORTS === '1'
-
-  let apiPort
-  let webPort
-
-  if (dynamicSmokePorts) {
-    apiPort = await findAvailablePort(preferredApiPort, reserved)
-    reserved.add(apiPort)
-    webPort = await findAvailablePort(preferredWebPort, reserved)
-    reserved.add(webPort)
-  } else {
-    if (preferredApiPort === preferredWebPort) {
-      throw new Error('API_PORT and WEB_PORT must be different values')
-    }
-    await assertPortAvailable(preferredApiPort, 'API')
-    await assertPortAvailable(preferredWebPort, 'Web')
-    apiPort = preferredApiPort
-    webPort = preferredWebPort
   }
 
   console.log('[smoke] Starting API and web servers...')
@@ -273,19 +305,60 @@ build.on('exit', async (code) => {
 
   const processes = []
 
-  const api = run('node', ['apps/api/dist/index.js'], {
-    env: { ...process.env, PORT: String(apiPort) },
-  })
+  const api = run(
+    pnpmCmd,
+    [
+      '--filter',
+      '@app/api',
+      'exec',
+      'wrangler',
+      'dev',
+      '--config',
+      'wrangler.jsonc',
+      '--port',
+      String(apiPort),
+      '--var',
+      `API_AUTH_BYPASS_FOR_E2E:${process.env.API_AUTH_BYPASS_FOR_E2E ?? 'true'}`,
+    ],
+    {
+      shell: process.platform === 'win32',
+      env: {
+        ...process.env,
+        PORT: String(apiPort),
+        APP_ENV: process.env.APP_ENV ?? 'local',
+        API_AUTH_BYPASS_FOR_E2E: process.env.API_AUTH_BYPASS_FOR_E2E ?? 'true',
+      },
+    },
+  )
   processes.push(api)
 
-  const web = run('node', ['apps/web/docker-start.mjs'], {
-    env: {
-      ...process.env,
-      PORT: String(webPort),
-      GRAPHQL_ENDPOINT: `http://localhost:${apiPort}/graphql`,
-      VITE_GRAPHQL_ENDPOINT: `http://localhost:${apiPort}/graphql`,
+  const web = run(
+    pnpmCmd,
+    [
+      '--filter',
+      '@app/web',
+      'exec',
+      'vite',
+      'preview',
+      '--port',
+      String(webPort),
+      '--host',
+      '0.0.0.0',
+    ],
+    {
+      shell: process.platform === 'win32',
+      env: {
+        ...process.env,
+        PORT: String(webPort),
+        GRAPHQL_ENDPOINT: `http://localhost:${apiPort}/graphql`,
+        VITE_GRAPHQL_ENDPOINT: `http://localhost:${apiPort}/graphql`,
+        EXPO_PUBLIC_GRAPHQL_ENDPOINT: `http://localhost:${apiPort}/graphql`,
+        VITE_AUTH_BYPASS_FOR_E2E:
+          process.env.VITE_AUTH_BYPASS_FOR_E2E ?? 'true',
+        API_AUTH_BYPASS_FOR_E2E: process.env.API_AUTH_BYPASS_FOR_E2E ?? 'true',
+      },
     },
-  })
+  )
   processes.push(web)
 
   try {
@@ -296,6 +369,7 @@ build.on('exit', async (code) => {
     })
     await waitFor(`http://localhost:${webPort}/learn`)
     await waitForLanding(`http://localhost:${webPort}/learn`)
+    await assertMobileApiHealth(apiPort)
     await runBrowserChecks({ baseUrl: `http://localhost:${webPort}` })
     const lessonPath = await fetchLessonPath(apiPort)
     await assertLesson(`http://localhost:${webPort}${lessonPath}`)

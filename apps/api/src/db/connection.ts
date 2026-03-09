@@ -2,8 +2,7 @@ import pg from 'pg'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import * as schema from './schema.js'
 
-export async function createDb() {
-  const connectionString = process.env.DATABASE_URL
+export async function createNodeDb(connectionString: string | null) {
   if (!connectionString) {
     return null
   }

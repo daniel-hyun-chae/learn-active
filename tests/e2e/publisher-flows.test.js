@@ -221,27 +221,62 @@ before(async () => {
     shell: process.platform === 'win32',
     env: {
       ...process.env,
+      VITE_GRAPHQL_ENDPOINT: `http://localhost:${stack.apiPort}/graphql`,
       VITE_AUTH_BYPASS_FOR_E2E: 'true',
     },
   })
 
-  const api = run('node', ['apps/api/dist/index.js'], {
-    env: {
-      ...process.env,
-      PORT: String(stack.apiPort),
-      API_AUTH_BYPASS_FOR_E2E: 'true',
+  const api = run(
+    pnpmCmd,
+    [
+      '--filter',
+      '@app/api',
+      'exec',
+      'wrangler',
+      'dev',
+      '--config',
+      'wrangler.jsonc',
+      '--port',
+      String(stack.apiPort),
+      '--var',
+      'API_AUTH_BYPASS_FOR_E2E:true',
+    ],
+    {
+      shell: process.platform === 'win32',
+      env: {
+        ...process.env,
+        PORT: String(stack.apiPort),
+        API_AUTH_BYPASS_FOR_E2E: 'true',
+      },
     },
-  })
-  const web = run('node', ['apps/web/docker-start.mjs'], {
-    env: {
-      ...process.env,
-      PORT: String(stack.webPort),
-      GRAPHQL_ENDPOINT: `http://localhost:${stack.apiPort}/graphql`,
-      VITE_GRAPHQL_ENDPOINT: `http://localhost:${stack.apiPort}/graphql`,
-      AUTH_BYPASS_FOR_E2E: 'true',
-      VITE_AUTH_BYPASS_FOR_E2E: 'true',
+  )
+  const web = run(
+    pnpmCmd,
+    [
+      '--filter',
+      '@app/web',
+      'exec',
+      'vite',
+      'preview',
+      '--port',
+      String(stack.webPort),
+      '--host',
+      '0.0.0.0',
+    ],
+    {
+      shell: process.platform === 'win32',
+      env: {
+        ...process.env,
+        PORT: String(stack.webPort),
+        GRAPHQL_ENDPOINT: `http://localhost:${stack.apiPort}/graphql`,
+        VITE_GRAPHQL_ENDPOINT: `http://localhost:${stack.apiPort}/graphql`,
+        EXPO_PUBLIC_GRAPHQL_ENDPOINT: `http://localhost:${stack.apiPort}/graphql`,
+        AUTH_BYPASS_FOR_E2E: 'true',
+        VITE_AUTH_BYPASS_FOR_E2E: 'true',
+        API_AUTH_BYPASS_FOR_E2E: 'true',
+      },
     },
-  })
+  )
 
   stack.processes.push(api, web)
 

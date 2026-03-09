@@ -1,0 +1,178 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-staging-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      api_changed: ${{ steps.detect.outputs.api_changed }}
+      web_changed: ${{ steps.detect.outputs.web_changed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed deployable areas
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          before="${{ github.event.before }}"
+          after="${{ github.sha }}"
+
+          if [[ "$before" == "0000000000000000000000000000000000000000" ]]; then
+            mapfile -t files < <(git ls-tree -r --name-only "$after")
+          else
+            mapfile -t files < <(git diff --name-only "$before" "$after")
+          fi
+
+          api_changed=false
+          web_changed=false
+
+          for file in "${files[@]}"; do
+            [[ -z "$file" ]] && continue
+            case "$file" in
+              apps/api/*|supabase/*)
+                api_changed=true
+                ;;
+              apps/web/*)
+                web_changed=true
+                ;;
+              shared/*|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|tsconfig.base.json)
+                api_changed=true
+                web_changed=true
+                ;;
+              apps/learners-mobile/*)
+                ;;
+              *)
+                ;;
+            esac
+          done
+
+          echo "api_changed=$api_changed" >> "$GITHUB_OUTPUT"
+          echo "web_changed=$web_changed" >> "$GITHUB_OUTPUT"
+
+  deploy-api:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.api_changed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate staging environment secrets
+        env:
+          SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL_STAGING }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY_STAGING }}
+          API_URL: ${{ secrets.API_URL_STAGING }}
+          WEB_URL: ${{ secrets.WEB_URL_STAGING }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(SUPABASE_PROJECT_URL SUPABASE_PUBLISHABLE_KEY API_URL WEB_URL)
+          missing=0
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing required staging secret: $name"
+              missing=1
+            fi
+          done
+          if [[ "$missing" -ne 0 ]]; then
+            exit 1
+          fi
+
+      - name: Deploy API Worker to staging
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_PROJECT_URL_STAGING }}
+        run: pnpm --filter @app/api deploy:worker:staging -- --var "SUPABASE_URL:${SUPABASE_URL}"
+
+  deploy-web:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.web_changed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate staging environment secrets
+        env:
+          SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL_STAGING }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY_STAGING }}
+          API_URL: ${{ secrets.API_URL_STAGING }}
+          WEB_URL: ${{ secrets.WEB_URL_STAGING }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(SUPABASE_PROJECT_URL SUPABASE_PUBLISHABLE_KEY API_URL WEB_URL)
+          missing=0
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing required staging secret: $name"
+              missing=1
+            fi
+          done
+          if [[ "$missing" -ne 0 ]]; then
+            exit 1
+          fi
+
+      - name: Build web for staging
+        env:
+          APP_ENV: staging
+          VITE_GRAPHQL_ENDPOINT: ${{ secrets.API_URL_STAGING }}
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_PROJECT_URL_STAGING }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY_STAGING }}
+        run: pnpm --filter @app/web build
+
+      - name: Deploy web to staging Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm --filter @app/web deploy:pages:staging

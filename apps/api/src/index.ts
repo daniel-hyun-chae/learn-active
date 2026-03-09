@@ -1,19 +1,17 @@
 import { createServer } from 'node:http'
-import 'reflect-metadata'
-import { createYoga } from 'graphql-yoga'
-import { createSchema } from './graphql/schema.js'
-import { createContext } from './graphql/context.js'
+import { createApiApp } from './app.js'
+import { loadNodeRuntimeEnv } from './runtime/env.js'
+import { createRuntimeServices } from './runtime/services.js'
 
-const schema = await createSchema()
-const yoga = createYoga({
-  schema,
-  context: createContext,
-  graphqlEndpoint: '/graphql',
-})
+const env = loadNodeRuntimeEnv()
+const services = await createRuntimeServices(env)
+const apiApp = await createApiApp(services)
 
-const server = createServer(yoga)
-const port = Number(process.env.PORT ?? 4000)
+const server = createServer(apiApp)
+const port = env.port
 
 server.listen(port, () => {
-  console.log(`[api] GraphQL server running on http://localhost:${port}/graphql`)
+  console.log(
+    `[api] GraphQL server running on http://localhost:${port}/graphql`,
+  )
 })

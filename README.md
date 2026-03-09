@@ -92,7 +92,7 @@ Run specific apps:
 
 ```
 pnpm --filter @app/web dev
-pnpm --filter @app/api dev
+pnpm --filter @app/api dev:worker
 pnpm --filter @app/learners-mobile start
 ```
 
@@ -100,6 +100,42 @@ pnpm --filter @app/learners-mobile start
 
 - Web app (learn + publish): http://localhost:4100
 - GraphQL API: http://localhost:4000/graphql
+
+## Cloudflare Compatibility Workflow (Local-First)
+
+- API local runtime uses Wrangler Worker emulation:
+
+```
+pnpm --filter @app/api dev:worker
+```
+
+- Web local static preview (Cloudflare Pages-compatible output):
+
+```
+pnpm --filter @app/web build
+pnpm --filter @app/web preview -- --port 4100 --host 0.0.0.0
+```
+
+- Cloudflare deployment-ready commands (for local verification/manual fallback):
+
+```
+pnpm --filter @app/api deploy:worker
+pnpm --filter @app/web deploy:pages
+```
+
+- CI/CD release flow (PR validation, staging auto deploy, production manual deploy, rollback) is documented in:
+
+```
+docs/ci-cd.md
+```
+
+## React Native -> Local API Validation
+
+For local development, point Expo/mobile to the local Wrangler API endpoint:
+
+- `EXPO_PUBLIC_GRAPHQL_ENDPOINT=http://localhost:4000/graphql`
+
+`pnpm smoke:local` validates this endpoint against local GraphQL health as part of local startup readiness.
 
 ## Authentication (Supabase, local-first)
 
@@ -167,6 +203,8 @@ If Google provider setup cannot be fully automated locally, Google initiation pa
 - `GRAPHQL_ENDPOINT` (server-side GraphQL endpoint for web apps)
 - `VITE_GRAPHQL_ENDPOINT` (client-side GraphQL endpoint for web apps)
 - `EXPO_PUBLIC_GRAPHQL_ENDPOINT` (mobile GraphQL endpoint for Expo)
+- `APP_ENV` (runtime stage selector: local/staging/production)
+- `API_AUTH_BYPASS_FOR_E2E` (local test-only auth bypass flag)
 
 Do not commit real secrets. Use:
 

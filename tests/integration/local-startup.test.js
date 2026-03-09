@@ -9,7 +9,7 @@ function read(file) {
   return fs.readFileSync(path.join(root, file), 'utf8')
 }
 
-test('local startup scripts @eval(EVAL-PLATFORM-LOCAL-001,EVAL-PLATFORM-LOCAL-003,EVAL-PLATFORM-LOCAL-004,EVAL-PLATFORM-LOCAL-005,EVAL-PLATFORM-LOCAL-008)', () => {
+test('local startup scripts @eval(EVAL-PLATFORM-LOCAL-001,EVAL-PLATFORM-LOCAL-003,EVAL-PLATFORM-LOCAL-004,EVAL-PLATFORM-LOCAL-005,EVAL-PLATFORM-LOCAL-008,EVAL-PLATFORM-LOCAL-010,EVAL-PLATFORM-LOCAL-011,EVAL-PLATFORM-LOCAL-012)', () => {
   const pkg = JSON.parse(read('package.json'))
   assert.ok(pkg.scripts.dev)
   assert.ok(pkg.scripts['smoke:local'])
@@ -48,12 +48,17 @@ test('local startup scripts @eval(EVAL-PLATFORM-LOCAL-001,EVAL-PLATFORM-LOCAL-00
   )
   assert.ok(baselineMigration.includes('create index if not exists'))
   assert.ok(baselineMigration.includes('create type public.profile_status'))
-  assert.ok(smoke.includes('apps/api/dist/index.js'))
-  assert.ok(smoke.includes('apps/web/docker-start.mjs'))
-  assert.ok(smoke.includes('api-health'))
+  assert.ok(smoke.includes("'wrangler'"))
+  assert.ok(smoke.includes("'dev'"))
+  assert.ok(smoke.includes('wrangler.jsonc'))
+  assert.ok(smoke.includes('@app/web'))
+  assert.ok(smoke.includes('preview'))
+  assert.ok(smoke.includes('app root container'))
   assert.ok(smoke.includes('stylesheet'))
   assert.ok(smoke.includes('modulepreload'))
   assert.ok(smoke.includes('runBrowserChecks'))
+  assert.ok(smoke.includes('assertMobileApiHealth'))
+  assert.ok(smoke.includes('EXPO_PUBLIC_GRAPHQL_ENDPOINT'))
   assert.ok(browserCheck.includes('hydration'))
   assert.ok(browserCheck.includes('router-not-found'))
   assert.ok(webRoot.includes('notFoundComponent'))
@@ -78,20 +83,16 @@ test('dev command orchestrates setup and stack @eval(EVAL-PLATFORM-LOCAL-002)', 
   assert.ok(dev.includes('dev-stack.mjs'))
   assert.ok(dev.includes('Running fail-hard local setup'))
   assert.ok(dev.includes('Starting development stack'))
-  assert.ok(devStack.includes('@app/api'))
+  assert.ok(devStack.includes("'wrangler'"))
+  assert.ok(devStack.includes("'dev'"))
+  assert.ok(devStack.includes('wrangler.jsonc'))
   assert.ok(devStack.includes('webAppDir'))
   assert.ok(devStack.includes('stylesheet'))
-  assert.ok(devStack.includes('critical runtime SSR middleware errors'))
-  assert.ok(
-    devStack.includes(
-      "Cannot read properties of undefined \\(reading 'fetch'\\)",
-    ),
-  )
-  assert.ok(devStack.includes('critical TanStack Start error'))
   assert.ok(!devStack.includes('db:migrate'))
 
   const viteConfig = read('apps/web/vite.config.ts')
-  assert.ok(viteConfig.includes('tanstackStart'))
+  assert.ok(!viteConfig.includes('tanstackStart'))
+  assert.ok(viteConfig.includes('viteReact()'))
   assert.ok(!viteConfig.includes('normalize-route-imports'))
   assert.ok(!viteConfig.includes('routes-alias'))
 })

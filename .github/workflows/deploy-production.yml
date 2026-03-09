@@ -1,0 +1,163 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_ref:
+        description: Commit SHA or ref to deploy (must be reachable from main)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  resolve-ref:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      deploy_sha: ${{ steps.resolve.outputs.deploy_sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve and validate deploy ref
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ref="${{ inputs.commit_ref }}"
+          git fetch --no-tags origin main
+
+          if ! git rev-parse --verify "$ref^{commit}" >/dev/null 2>&1; then
+            echo "Unable to resolve commit_ref: $ref"
+            exit 1
+          fi
+
+          deploy_sha="$(git rev-parse "$ref^{commit}")"
+          if ! git merge-base --is-ancestor "$deploy_sha" origin/main; then
+            echo "Ref is not reachable from origin/main: $deploy_sha"
+            exit 1
+          fi
+
+          echo "deploy_sha=$deploy_sha" >> "$GITHUB_OUTPUT"
+
+  deploy-api:
+    needs: resolve-ref
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - name: Checkout deploy ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-ref.outputs.deploy_sha }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate production environment secrets
+        env:
+          SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL_PROD }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY_PROD }}
+          API_URL: ${{ secrets.API_URL_PROD }}
+          WEB_URL: ${{ secrets.WEB_URL_PROD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(SUPABASE_PROJECT_URL SUPABASE_PUBLISHABLE_KEY API_URL WEB_URL)
+          missing=0
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing required production secret: $name"
+              missing=1
+            fi
+          done
+          if [[ "$missing" -ne 0 ]]; then
+            exit 1
+          fi
+
+      - name: Deploy API Worker to production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_PROJECT_URL_PROD }}
+        run: pnpm --filter @app/api deploy:worker:prod -- --var "SUPABASE_URL:${SUPABASE_URL}"
+
+  deploy-web:
+    needs: resolve-ref
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - name: Checkout deploy ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-ref.outputs.deploy_sha }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate production environment secrets
+        env:
+          SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL_PROD }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY_PROD }}
+          API_URL: ${{ secrets.API_URL_PROD }}
+          WEB_URL: ${{ secrets.WEB_URL_PROD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(SUPABASE_PROJECT_URL SUPABASE_PUBLISHABLE_KEY API_URL WEB_URL)
+          missing=0
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing required production secret: $name"
+              missing=1
+            fi
+          done
+          if [[ "$missing" -ne 0 ]]; then
+            exit 1
+          fi
+
+      - name: Build web for production
+        env:
+          APP_ENV: production
+          VITE_GRAPHQL_ENDPOINT: ${{ secrets.API_URL_PROD }}
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_PROJECT_URL_PROD }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY_PROD }}
+        run: pnpm --filter @app/web build
+
+      - name: Deploy web to production Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm --filter @app/web deploy:pages:prod

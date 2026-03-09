@@ -7,6 +7,7 @@ const pnpmCmd = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
 const routeTreeScript = fileURLToPath(
   new URL('./verify-route-tree.mjs', import.meta.url),
 )
+const apiAppDir = fileURLToPath(new URL('../apps/api', import.meta.url))
 const webAppDir = fileURLToPath(new URL('../apps/web', import.meta.url))
 
 function normalizeDatabaseUrlForDevcontainer(connectionString) {
@@ -34,15 +35,6 @@ function run(command, args, options = {}) {
   return spawn(command, args, { stdio: 'inherit', ...options })
 }
 
-const criticalRuntimePatterns = [
-  /Cannot read properties of undefined \(reading 'fetch'\)/,
-  /@tanstack\/start-plugin-core\/dist\/esm\/dev-server-plugin\/plugin\.js/,
-]
-
-function matchesCriticalRuntimeError(message) {
-  return criticalRuntimePatterns.some((pattern) => pattern.test(message))
-}
-
 function startMonitoredProcess(name, command, args, options = {}) {
   const proc = spawn(command, args, {
     stdio: ['inherit', 'pipe', 'pipe'],
@@ -68,16 +60,6 @@ function startMonitoredProcess(name, command, args, options = {}) {
   return {
     name,
     proc,
-    criticalError: null,
-    hasCriticalError() {
-      return matchesCriticalRuntimeError(recentOutput)
-    },
-    recordCriticalError() {
-      if (!this.criticalError && this.hasCriticalError()) {
-        this.criticalError = formatRecentOutput(recentOutput)
-      }
-      return this.criticalError
-    },
     getRecentOutput() {
       return recentOutput
     },
@@ -180,39 +162,21 @@ async function assertLanding(url) {
     throw new Error(`Landing page returned ${response.status}`)
   }
   const html = await response.text()
-  if (html.includes('data-test="api-health"')) {
-    const statusMatch = html.match(
-      /data-test=["']api-health["'][^>]*data-status=["']([^"']+)["']/i,
-    )
-    const status = statusMatch?.[1]
-    if (!status) {
-      throw new Error('Landing page missing api-health status')
-    }
-    if (status !== 'ok') {
-      throw new Error(`Landing page reported API status ${status}`)
-    }
+  if (!html.includes('<div id="app"></div>')) {
+    throw new Error('Landing page missing app root container')
+  }
 
-    const cssMatch = html.match(
-      /<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/i,
-    )
-    if (cssMatch) {
-      const cssUrl = cssMatch[1].startsWith('http')
-        ? cssMatch[1]
-        : new URL(cssMatch[1], url).toString()
-      const cssResponse = await fetch(cssUrl)
-      if (!cssResponse.ok) {
-        throw new Error(`Stylesheet request failed with ${cssResponse.status}`)
-      }
-      return
-    }
-
-    const cssResponse = await fetch(new URL('/src/styles.css', url).toString())
+  const cssMatch = html.match(
+    /<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/i,
+  )
+  if (cssMatch) {
+    const cssUrl = cssMatch[1].startsWith('http')
+      ? cssMatch[1]
+      : new URL(cssMatch[1], url).toString()
+    const cssResponse = await fetch(cssUrl)
     if (!cssResponse.ok) {
-      throw new Error(
-        `Dev stylesheet request failed with ${cssResponse.status}`,
-      )
+      throw new Error(`Stylesheet request failed with ${cssResponse.status}`)
     }
-
     return
   }
 
@@ -228,19 +192,6 @@ function shutdown(processes) {
       proc.kill('SIGINT')
     }
   }
-}
-
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-function formatRecentOutput(output) {
-  const lines = output
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-
-  return lines.slice(-6).join(' | ')
 }
 
 console.log('[dev-stack] Starting API + web dev servers...')
@@ -295,12 +246,26 @@ const effectiveDatabaseUrl = normalizeDatabaseUrlForDevcontainer(
 const apiProcess = startMonitoredProcess(
   'api',
   pnpmCmd,
-  ['--filter', '@app/api', 'dev'],
+  [
+    '--filter',
+    '@app/api',
+    'exec',
+    'wrangler',
+    'dev',
+    '--config',
+    'wrangler.jsonc',
+    '--port',
+    String(apiPort),
+    '--var',
+    `API_AUTH_BYPASS_FOR_E2E:${process.env.API_AUTH_BYPASS_FOR_E2E ?? 'true'}`,
+  ],
   {
+    cwd: apiAppDir,
     shell: process.platform === 'win32',
     env: {
       ...process.env,
       PORT: String(apiPort),
+      APP_ENV: process.env.APP_ENV ?? 'local',
       ...(effectiveDatabaseUrl ? { DATABASE_URL: effectiveDatabaseUrl } : {}),
     },
   },
@@ -342,18 +307,6 @@ for (const monitored of [apiProcess, webProcess]) {
   })
 }
 
-const criticalErrorWatcher = setInterval(() => {
-  for (const monitored of [apiProcess, webProcess]) {
-    const critical = monitored.recordCriticalError()
-    if (critical) {
-      failAndExit(
-        `${monitored.name} runtime emitted a critical TanStack Start error: ${critical}`,
-      )
-      return
-    }
-  }
-}, 500)
-
 try {
   await waitFor(apiEndpoint, {
     method: 'POST',
@@ -362,22 +315,6 @@ try {
   })
   await waitFor(`http://localhost:${webPort}/learn`, withHtmlHeaders())
   await assertLanding(`http://localhost:${webPort}/learn`)
-  console.log(
-    '[dev-stack] Checking for critical runtime SSR middleware errors...',
-  )
-  await wait(2500)
-
-  if (apiProcess.hasCriticalError()) {
-    throw new Error(
-      `API runtime emitted a critical TanStack Start error: ${formatRecentOutput(apiProcess.getRecentOutput())}`,
-    )
-  }
-
-  if (webProcess.hasCriticalError()) {
-    throw new Error(
-      `Web runtime emitted a critical TanStack Start error: ${formatRecentOutput(webProcess.getRecentOutput())}`,
-    )
-  }
 
   console.log('[dev-stack] Services are responding')
 } catch (error) {
@@ -386,4 +323,3 @@ try {
 
 process.on('SIGINT', () => shutdown(processes))
 process.on('SIGTERM', () => shutdown(processes))
-process.on('exit', () => clearInterval(criticalErrorWatcher))

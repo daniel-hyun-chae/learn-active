@@ -21,7 +21,7 @@ Criteria:
 - `setup:local` waits for DB reachability and runs Supabase SQL migrations fail-hard.
 - A `pnpm dev:stack` script exists and starts API + web dev servers with health checks.
 - The dev stack script verifies the landing page serves its stylesheet.
-- The dev stack script fails fast when critical runtime SSR middleware errors are emitted after initial health checks.
+- The dev stack script fails fast when API or web processes exit unexpectedly after initial health checks.
 - The dev stack script does not run migrations directly.
 
 ## EVAL-PLATFORM-LOCAL-003: Setup verification preflight
@@ -104,3 +104,31 @@ Criteria:
 - Devcontainer mounts a persistent volume for Playwright browser binaries.
 - Devcontainer image installs Chromium runtime dependencies required by Playwright.
 - Devcontainer compose config provides shared memory sizing suitable for Chromium.
+
+## EVAL-PLATFORM-LOCAL-010: Local Wrangler API workflow
+
+Goal: Ensure API local runtime matches Cloudflare Worker execution during development.
+Criteria:
+
+- API workspace exposes a Wrangler-based local dev command.
+- Dev stack startup uses Wrangler for the local API runtime.
+- Smoke startup uses Wrangler for the local API runtime.
+- API local runtime keeps GraphQL endpoint compatibility at `/graphql`.
+
+## EVAL-PLATFORM-LOCAL-011: Static web compatibility for Cloudflare Pages
+
+Goal: Ensure web local/prod assumptions are compatible with static Pages deployment.
+Criteria:
+
+- Web build uses static Vite output without Node SSR runtime dependency.
+- Web workspace exposes preview and Pages deploy scripts.
+- Smoke startup uses static web preview startup command.
+
+## EVAL-PLATFORM-LOCAL-012: React Native local API compatibility
+
+Goal: Ensure the React Native app can call local Wrangler API endpoints during development.
+Criteria:
+
+- Mobile API endpoint configuration supports a local GraphQL URL override.
+- Smoke startup validates a mobile-target endpoint against local GraphQL health.
+- Documentation includes the expected mobile local endpoint variable for local development.

@@ -1,15 +1,9 @@
 import { redirect } from '@tanstack/react-router'
 import { getWebSupabaseClient } from './supabase-client'
+import { isWebAuthBypassEnabled } from '../../shared/api/runtime'
 
 function isE2eBypassEnabled() {
-  return (
-    (
-      globalThis as typeof globalThis & {
-        process?: { env?: Record<string, string | undefined> }
-      }
-    ).process?.env?.AUTH_BYPASS_FOR_E2E === 'true' ||
-    import.meta.env.VITE_AUTH_BYPASS_FOR_E2E === 'true'
-  )
+  return isWebAuthBypassEnabled()
 }
 
 function normalizeReturnTo(value: string | undefined) {
