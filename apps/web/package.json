@@ -11,7 +11,7 @@
     "deploy:pages": "pnpm exec wrangler pages deploy dist --project-name course-web",
     "deploy:pages:staging": "pnpm exec wrangler pages deploy dist --project-name course-web-staging",
     "deploy:pages:prod": "pnpm exec wrangler pages deploy dist --project-name course-web",
-    "lint": "pnpm -w exec eslint ."
+    "lint": "pnpm exec eslint ."
   },
   "dependencies": {
     "@app/shared-config": "workspace:*",

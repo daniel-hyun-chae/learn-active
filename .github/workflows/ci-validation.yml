@@ -29,8 +29,31 @@ jobs:
           node-version: 20
           cache: pnpm
 
+      - name: Validate lockfile and pnpm major alignment
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_major="$(node -p "const pm=require('./package.json').packageManager || ''; const m=pm.match(/pnpm@(\\d+)/); m ? m[1] : ''")"
+          lockfile_major="$(node -p "const fs=require('fs'); const text=fs.readFileSync('pnpm-lock.yaml','utf8'); const m=text.match(/^lockfileVersion:\\s*'?(\\d+)/m); m ? m[1] : ''")"
+
+          echo "Expected pnpm major from packageManager: ${expected_major}"
+          echo "Detected lockfile major: ${lockfile_major}"
+
+          if [[ -z "${expected_major}" || -z "${lockfile_major}" ]]; then
+            echo "Unable to determine pnpm major or lockfile major."
+            exit 1
+          fi
+
+          if [[ "${expected_major}" != "${lockfile_major}" ]]; then
+            echo "pnpm major and lockfile major mismatch. Regenerate pnpm-lock.yaml with pnpm ${expected_major}."
+            exit 1
+          fi
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browser dependencies
+        run: pnpm exec playwright install --with-deps chromium
 
       - name: Lint monorepo
         run: pnpm lint

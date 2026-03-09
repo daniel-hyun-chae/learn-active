@@ -20,6 +20,10 @@ test('pull request validation workflow wiring @eval(EVAL-PLATFORM-CICD-001)', ()
   assert.ok(workflow.includes('pnpm test:integration'))
   assert.ok(workflow.includes('pnpm test:e2e'))
   assert.ok(workflow.includes('pnpm --filter @app/learners-mobile lint'))
+  assert.ok(workflow.includes('Validate lockfile and pnpm major alignment'))
+  assert.ok(
+    workflow.includes('pnpm exec playwright install --with-deps chromium'),
+  )
 })
 
 test('staging deployment workflow wiring @eval(EVAL-PLATFORM-CICD-002,EVAL-PLATFORM-CICD-004)', () => {
