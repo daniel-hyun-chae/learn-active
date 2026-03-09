@@ -31,7 +31,7 @@ Goal: Document and template runtime configuration for containerized startup.
 Criteria:
 
 - `.env.example` exists and lists database, Supabase, and GraphQL endpoint variables.
-- `.env.production` exists as a placeholder template and contains no secrets.
+- `.env.production` is treated as an environment-specific real file and is not required to be committed.
 - `README.md` documents Docker startup and notes `.env` usage.
 - Shared config reads `GRAPHQL_ENDPOINT` and `VITE_GRAPHQL_ENDPOINT` when present.
 - A startup setup script (`pnpm setup`) and verification script (`pnpm verify:startup`) exist and are documented.

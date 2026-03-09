@@ -57,7 +57,7 @@ Recommended local flow:
 
 - Production uses Supabase-managed PostgreSQL.
 - Store real production credentials only in deployment/platform secret storage.
-- Commit only placeholders in `.env.production`.
+- Do not commit `.env.production`.
 
 ## What Is Required on Host
 
@@ -209,7 +209,6 @@ If Google provider setup cannot be fully automated locally, Google initiation pa
 Do not commit real secrets. Use:
 
 - `.env.example` as template
-- `.env.production` as placeholder-only template
 - `.env.local` for local/private values
 
 ## OpenCode in Devcontainer

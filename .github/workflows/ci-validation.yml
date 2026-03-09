@@ -52,6 +52,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Validate committed env template file
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .env.example
+
       - name: Install Playwright browser dependencies
         run: pnpm exec playwright install --with-deps chromium
 

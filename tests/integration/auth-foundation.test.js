@@ -23,7 +23,6 @@ test('auth local-first foundation wiring @eval(EVAL-AUTH-LOCAL-001,EVAL-AUTH-LOC
     'supabase/migrations/0002_auth_profile_sync.sql',
   )
   const envExample = read('.env.example')
-  const envProduction = read('.env.production')
 
   assert.ok(webAuthRoute.includes("createFileRoute('/auth')"))
   assert.ok(webAuthProvider.includes('signInWithOAuth'))
@@ -48,7 +47,7 @@ test('auth local-first foundation wiring @eval(EVAL-AUTH-LOCAL-001,EVAL-AUTH-LOC
   assert.ok(envExample.includes('EXPO_PUBLIC_SUPABASE_URL'))
   assert.ok(envExample.includes('SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID'))
 
-  assert.ok(envProduction.includes('VITE_SUPABASE_ANON_KEY'))
-  assert.ok(envProduction.includes('EXPO_PUBLIC_SUPABASE_ANON_KEY'))
-  assert.ok(envProduction.includes('SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET'))
+  assert.ok(envExample.includes('VITE_SUPABASE_ANON_KEY'))
+  assert.ok(envExample.includes('EXPO_PUBLIC_SUPABASE_ANON_KEY'))
+  assert.ok(envExample.includes('SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET'))
 })
