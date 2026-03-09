@@ -5,11 +5,16 @@ export type AuthenticatedUser = {
   email: string | null
 }
 
+export type AuthRuntimeConfig = {
+  supabaseUrl: string | null
+  apiAuthBypassForE2E: boolean
+}
+
 let cachedJwks: ReturnType<typeof createRemoteJWKSet> | null = null
 let cachedIssuer: string | null = null
 
-function getSupabaseIssuer() {
-  const url = process.env.SUPABASE_URL?.trim()
+function toSupabaseIssuer(supabaseUrl: string | null) {
+  const url = supabaseUrl?.trim()
   if (!url) {
     return null
   }
@@ -43,15 +48,16 @@ export function getBearerToken(request: Request) {
 
 export async function verifyAccessToken(
   token: string,
+  config: AuthRuntimeConfig,
 ): Promise<AuthenticatedUser> {
-  if (process.env.API_AUTH_BYPASS_FOR_E2E === 'true') {
+  if (config.apiAuthBypassForE2E) {
     return {
       id: 'e2e-user',
       email: 'e2e@example.local',
     }
   }
 
-  const issuer = getSupabaseIssuer()
+  const issuer = toSupabaseIssuer(config.supabaseUrl)
   if (!issuer) {
     throw new Error('SUPABASE_URL is required for bearer token verification.')
   }

@@ -6,10 +6,11 @@ const path = require('node:path')
 const root = path.resolve(__dirname, '..', '..')
 
 const requiredEntries = [
+  'apps/web/index.html',
   'apps/web/src/client.tsx',
-  'apps/web/src/server.ts',
   'apps/learners-mobile/index.js',
   'apps/api/src/index.ts',
+  'apps/api/src/worker.ts',
 ]
 
 test('app entry points present @eval(EVAL-PLATFORM-INIT-001)', () => {

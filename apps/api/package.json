@@ -5,8 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm exec tsx watch src/index.ts",
+    "dev:worker": "pnpm exec wrangler dev --config wrangler.jsonc --port 4000",
     "build": "pnpm exec tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
+    "deploy:worker": "pnpm exec wrangler deploy --config wrangler.jsonc",
+    "deploy:worker:staging": "pnpm exec wrangler deploy --config wrangler.jsonc --name course-api-staging --var APP_ENV:staging",
+    "deploy:worker:prod": "pnpm exec wrangler deploy --config wrangler.jsonc --name course-api --var APP_ENV:production",
     "lint": "pnpm exec eslint src --max-warnings 0"
   },
   "dependencies": {
@@ -23,6 +27,7 @@
   "devDependencies": {
     "@types/node": "^20.11.30",
     "@types/pg": "^8.11.6",
+    "wrangler": "3.95.0",
     "tsx": "^4.18.0",
     "typescript": "^5.6.3"
   }

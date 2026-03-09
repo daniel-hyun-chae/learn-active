@@ -24,7 +24,7 @@
     "source=${localEnv:HOME}/.netrc,target=/home/node/.netrc,type=bind",
     "source=${localEnv:HOME}/.local/share/opencode/auth.json,target=/home/node/.local/share/opencode/auth.json,type=bind",
     "source=${localEnv:HOME}/.config/opencode,target=/home/node/.config/opencode,type=bind",
-    "source=${localWorkspaceFolderBasename}-ms-playwright,target=/home/node/.cache/ms-playwright,type=volume",
+    "source=${localWorkspaceFolderBasename}-ms-playwright,target=/home/node/.cache/ms-playwright,type=volume"
   ],
   "customizations": {
     "vscode": {

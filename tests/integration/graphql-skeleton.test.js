@@ -11,6 +11,7 @@ function read(file) {
 
 test('graphql api skeleton @eval(EVAL-PLATFORM-INIT-004,EVAL-AUTH-LOCAL-004)', () => {
   const apiIndex = read('apps/api/src/index.ts')
+  const apiApp = read('apps/api/src/app.ts')
   const healthResolver = read('apps/api/src/features/health/resolver.ts')
   const quizResolver = read('apps/api/src/features/quiz/resolver.ts')
   const courseResolver = read('apps/api/src/features/course/resolver.ts')
@@ -18,7 +19,8 @@ test('graphql api skeleton @eval(EVAL-PLATFORM-INIT-004,EVAL-AUTH-LOCAL-004)', (
   const authGuard = read('apps/api/src/features/auth/guard.ts')
   const authContext = read('apps/api/src/graphql/context.ts')
 
-  assert.ok(apiIndex.includes("graphqlEndpoint: '/graphql'"))
+  assert.ok(apiIndex.includes('createApiApp('))
+  assert.ok(apiApp.includes('graphqlEndpoint: services.env.graphqlEndpoint'))
   assert.ok(healthResolver.includes('HealthResolver'))
   assert.ok(healthResolver.includes("return 'ok'"))
   assert.ok(quizResolver.includes('QuizFormat'))

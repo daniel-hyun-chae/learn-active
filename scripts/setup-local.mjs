@@ -29,7 +29,7 @@ function normalizeDatabaseUrlForDevcontainer(connectionString) {
     const parsed = new URL(connectionString)
     if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
       console.warn(
-        '[setup:local] DATABASE_URL used localhost in devcontainer; trying localhost first, then host.docker.internal if needed',
+        '[setup:local] DATABASE_URL used localhost in devcontainer; switching host to host.docker.internal as fallback if needed',
       )
       const hostGatewayUrl = new URL(connectionString)
       hostGatewayUrl.hostname = 'host.docker.internal'

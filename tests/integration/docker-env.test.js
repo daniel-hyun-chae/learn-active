@@ -11,7 +11,6 @@ function read(file) {
 
 test('docker env configuration @eval(EVAL-PLATFORM-DOCKER-002)', () => {
   const envExample = read('.env.example')
-  const envProduction = read('.env.production')
   const readme = read('README.md')
   const config = read('shared/shared-config/src/index.ts')
 
@@ -22,17 +21,13 @@ test('docker env configuration @eval(EVAL-PLATFORM-DOCKER-002)', () => {
   assert.ok(envExample.includes('GRAPHQL_ENDPOINT='))
   assert.ok(envExample.includes('VITE_GRAPHQL_ENDPOINT='))
   assert.ok(envExample.includes('EXPO_PUBLIC_GRAPHQL_ENDPOINT='))
-  assert.ok(envProduction.includes('DATABASE_URL='))
-  assert.ok(envProduction.includes('SUPABASE_URL='))
-  assert.ok(envProduction.includes('SUPABASE_ANON_KEY='))
-  assert.ok(envProduction.includes('SUPABASE_SERVICE_ROLE_KEY='))
   assert.ok(readme.includes('docker compose build --no-cache'))
   assert.ok(readme.includes('docker compose up'))
   assert.ok(readme.includes('Supabase'))
   assert.ok(readme.includes('Dev container (recommended)'))
   assert.ok(readme.includes('pnpm verify:startup'))
   assert.ok(readme.includes('.env.example'))
-  assert.ok(readme.includes('.env.production'))
+  assert.ok(readme.includes('.env.local'))
   assert.ok(readme.includes('EXPO_PUBLIC_GRAPHQL_ENDPOINT'))
   assert.ok(config.includes('GRAPHQL_ENDPOINT'))
   assert.ok(config.includes('VITE_GRAPHQL_ENDPOINT'))

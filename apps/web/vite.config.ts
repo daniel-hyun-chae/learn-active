@@ -1,7 +1,6 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
-import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import tsconfigPaths from 'vite-tsconfig-paths'
 
@@ -18,16 +17,7 @@ export default defineConfig({
       { find: /^\/routes$/, replacement: routesDir },
     ],
   },
-  plugins: [
-    tsconfigPaths(),
-    tanstackStart({
-      customViteReactPlugin: true,
-      server: {
-        entry: './server.ts',
-      },
-    }),
-    viteReact(),
-  ],
+  plugins: [tsconfigPaths(), viteReact()],
   server: {
     host: '0.0.0.0',
     port: 4100,

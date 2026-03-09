@@ -1,0 +1,80 @@
+name: CI Validation
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-validation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Validate lockfile and pnpm major alignment
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_major="$(node -p "const pm=require('./package.json').packageManager || ''; const m=pm.match(/pnpm@(\\d+)/); m ? m[1] : ''")"
+          lockfile_major="$(node -p "const fs=require('fs'); const text=fs.readFileSync('pnpm-lock.yaml','utf8'); const m=text.match(/^lockfileVersion:\\s*'?(\\d+)/m); m ? m[1] : ''")"
+
+          echo "Expected pnpm major from packageManager: ${expected_major}"
+          echo "Detected lockfile major: ${lockfile_major}"
+
+          if [[ -z "${expected_major}" || -z "${lockfile_major}" ]]; then
+            echo "Unable to determine pnpm major or lockfile major."
+            exit 1
+          fi
+
+          if [[ "${expected_major}" != "${lockfile_major}" ]]; then
+            echo "pnpm major and lockfile major mismatch. Regenerate pnpm-lock.yaml with pnpm ${expected_major}."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate committed env template file
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .env.example
+
+      - name: Install Playwright browser dependencies
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Lint monorepo
+        run: pnpm lint
+
+      - name: Verify React Native participates in CI checks
+        run: pnpm --filter @app/learners-mobile lint
+
+      - name: Build monorepo
+        run: pnpm build
+
+      - name: Run unit tests
+        run: pnpm test:unit
+
+      - name: Run integration tests
+        run: pnpm test:integration
+
+      - name: Run e2e tests
+        run: pnpm test:e2e

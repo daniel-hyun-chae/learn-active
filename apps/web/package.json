@@ -6,8 +6,12 @@
   "scripts": {
     "dev": "node ../../scripts/verify-route-tree.mjs && pnpm exec vite dev",
     "build": "node ../../scripts/verify-route-tree.mjs && pnpm exec vite build",
-    "start": "node .output/server/index.mjs",
-    "lint": "pnpm -w exec eslint ."
+    "preview": "pnpm exec vite preview",
+    "start": "pnpm run preview",
+    "deploy:pages": "pnpm exec wrangler pages deploy dist --project-name course-web",
+    "deploy:pages:staging": "pnpm exec wrangler pages deploy dist --project-name course-web-staging",
+    "deploy:pages:prod": "pnpm exec wrangler pages deploy dist --project-name course-web",
+    "lint": "pnpm exec eslint ."
   },
   "dependencies": {
     "@app/shared-config": "workspace:*",
@@ -19,7 +23,6 @@
     "@supabase/supabase-js": "^2.57.4",
     "@tanstack/react-query": "^5.56.0",
     "@tanstack/react-router": "1.131.50",
-    "@tanstack/react-start": "1.131.50",
     "graphql-request": "^7.1.0",
     "@lexical/history": "^0.41.0",
     "@lexical/link": "^0.41.0",
@@ -36,6 +39,7 @@
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",
     "vite": "^6.4.1",
-    "vite-tsconfig-paths": "^5.0.0"
+    "vite-tsconfig-paths": "^5.0.0",
+    "wrangler": "3.95.0"
   }
 }

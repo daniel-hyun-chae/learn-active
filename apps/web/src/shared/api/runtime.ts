@@ -1,10 +1,10 @@
 import { appConfig } from '@app/shared-config'
 
 type RuntimeWithConfig = typeof globalThis & {
+  __APP_THEME__?: string
   __GRAPHQL_ENDPOINT__?: string
   __SUPABASE_URL__?: string
   __SUPABASE_ANON_KEY__?: string
-  process?: { env?: Record<string, string | undefined> }
 }
 
 export type SupabaseRuntimeConfig = {
@@ -12,15 +12,20 @@ export type SupabaseRuntimeConfig = {
   supabaseAnonKey: string
 }
 
+export type WebRuntimeConfig = {
+  theme: string
+  graphqlEndpoint: string
+  supabase: SupabaseRuntimeConfig | null
+  authBypassForE2E: boolean
+}
+
 function getRuntime() {
   return globalThis as RuntimeWithConfig
 }
 
-function getRuntimeEnvValue(...keys: string[]) {
-  const runtime = getRuntime()
-
+function getImportMetaEnvValue(...keys: string[]) {
   for (const key of keys) {
-    const envValue = runtime.process?.env?.[key]
+    const envValue = import.meta.env[key]
     if (envValue) {
       return envValue
     }
@@ -35,20 +40,9 @@ export function getRuntimeEndpoint() {
     if (runtimeEndpoint) {
       return runtimeEndpoint
     }
-
-    const envEndpoint = getRuntimeEnvValue(
-      'VITE_GRAPHQL_ENDPOINT',
-      'GRAPHQL_ENDPOINT',
-    )
-    if (envEndpoint) {
-      return envEndpoint
-    }
   }
 
-  const fallbackEnv = getRuntimeEnvValue(
-    'VITE_GRAPHQL_ENDPOINT',
-    'GRAPHQL_ENDPOINT',
-  )
+  const fallbackEnv = getImportMetaEnvValue('VITE_GRAPHQL_ENDPOINT')
   if (fallbackEnv) {
     return fallbackEnv
   }
@@ -60,12 +54,11 @@ export function getSupabaseRuntimeConfig(): SupabaseRuntimeConfig | null {
   const runtime = getRuntime()
 
   const supabaseUrl =
-    runtime.__SUPABASE_URL__ ??
-    getRuntimeEnvValue('VITE_SUPABASE_URL', 'SUPABASE_URL')
+    runtime.__SUPABASE_URL__ ?? getImportMetaEnvValue('VITE_SUPABASE_URL')
 
   const supabaseAnonKey =
     runtime.__SUPABASE_ANON_KEY__ ??
-    getRuntimeEnvValue('VITE_SUPABASE_ANON_KEY', 'SUPABASE_ANON_KEY')
+    getImportMetaEnvValue('VITE_SUPABASE_ANON_KEY')
 
   if (!supabaseUrl || !supabaseAnonKey) {
     return null
@@ -74,5 +67,21 @@ export function getSupabaseRuntimeConfig(): SupabaseRuntimeConfig | null {
   return {
     supabaseUrl,
     supabaseAnonKey,
+  }
+}
+
+export function isWebAuthBypassEnabled() {
+  return getImportMetaEnvValue('VITE_AUTH_BYPASS_FOR_E2E') === 'true'
+}
+
+export function getWebRuntimeConfig(): WebRuntimeConfig {
+  return {
+    theme:
+      getRuntime().__APP_THEME__ ??
+      getImportMetaEnvValue('VITE_APP_THEME') ??
+      'dark',
+    graphqlEndpoint: getRuntimeEndpoint(),
+    supabase: getSupabaseRuntimeConfig(),
+    authBypassForE2E: isWebAuthBypassEnabled(),
   }
 }
