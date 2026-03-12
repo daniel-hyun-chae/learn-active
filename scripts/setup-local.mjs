@@ -2,7 +2,6 @@ import fs from 'node:fs'
 import net from 'node:net'
 import { spawn } from 'node:child_process'
 
-const pnpmCmd = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
 const defaultDatabaseUrl =
   'postgresql://postgres:postgres@localhost:54322/postgres'
 
@@ -146,8 +145,7 @@ console.log(
 )
 
 console.log('[setup:local] Applying Supabase migrations (fail hard)...')
-await runAndWait(pnpmCmd, ['db:push'], {
-  shell: process.platform === 'win32',
+await runAndWait(process.execPath, ['scripts/dev-db.mjs', 'push'], {
   env: {
     ...process.env,
     DATABASE_URL: databaseUrl,

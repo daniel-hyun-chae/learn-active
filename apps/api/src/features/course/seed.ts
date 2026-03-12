@@ -1,4 +1,4 @@
-import type { Course } from './types.js'
+import type { CourseContent } from './model.js'
 import {
   BlankVariant,
   ContentType,
@@ -6,7 +6,14 @@ import {
   SegmentType,
 } from './types.js'
 
-export const courses: Course[] = [
+type SeedCourse = {
+  id: string
+  title: string
+  description: string
+  modules: CourseContent['modules']
+}
+
+export const courses: SeedCourse[] = [
   {
     id: 'course-german-1',
     title: 'German Essentials: Greetings',
@@ -149,6 +156,7 @@ export const seedCourseContent = {
 
 export const seedCourseRow = {
   id: courses[0].id,
+  ownerId: '__seed_owner__',
   title: courses[0].title,
   description: courses[0].description,
   content: seedCourseContent,

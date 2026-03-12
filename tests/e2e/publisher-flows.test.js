@@ -1,16 +1,139 @@
 const { before, after, test } = require('node:test')
 const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
 const { spawn, spawnSync } = require('node:child_process')
+const http = require('node:http')
+const https = require('node:https')
 const net = require('node:net')
 const { chromium, selectors } = require('playwright')
+const { createAuthStorageState } = require('./auth-storage-state')
 
 selectors.setTestIdAttribute('data-test')
 
 function run(command, args, options = {}) {
   return spawn(command, args, {
     stdio: 'inherit',
+    detached: process.platform !== 'win32',
     ...options,
   })
+}
+
+function forceStopDevProcesses() {
+  const patterns = [
+    '[n]ode scripts/dev.mjs',
+    '[w]rangler.*dev',
+    '[v]ite.*dev',
+    '[v]ite.*preview',
+  ]
+
+  for (const pattern of patterns) {
+    spawnSync('pkill', ['-f', pattern], {
+      stdio: 'ignore',
+      shell: process.platform === 'win32',
+      env: { ...process.env },
+    })
+  }
+}
+
+function parseEnvAssignments(rawText) {
+  const values = {}
+  for (const line of rawText.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!trimmed || !trimmed.includes('=')) {
+      continue
+    }
+    const separatorIndex = trimmed.indexOf('=')
+    const key = trimmed.slice(0, separatorIndex).trim()
+    if (!/^[A-Z0-9_]+$/.test(key)) {
+      continue
+    }
+
+    let value = trimmed.slice(separatorIndex + 1).trim()
+    if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+      value = value.slice(1, -1)
+    }
+
+    values[key] = value
+  }
+  return values
+}
+
+function extractAccessTokenFromStorageState(storageStatePath) {
+  const raw = fs.readFileSync(storageStatePath, 'utf8')
+  const state = JSON.parse(raw)
+  const origins = Array.isArray(state.origins) ? state.origins : []
+
+  for (const origin of origins) {
+    const entries = Array.isArray(origin.localStorage)
+      ? origin.localStorage
+      : []
+    for (const entry of entries) {
+      if (!entry?.name?.toLowerCase?.().includes('auth-token')) {
+        continue
+      }
+
+      try {
+        const parsed = JSON.parse(entry.value)
+        if (typeof parsed?.access_token === 'string' && parsed.access_token) {
+          return parsed.access_token
+        }
+        if (
+          typeof parsed?.currentSession?.access_token === 'string' &&
+          parsed.currentSession.access_token
+        ) {
+          return parsed.currentSession.access_token
+        }
+      } catch {
+        // ignore parse errors and continue scanning
+      }
+    }
+  }
+
+  return null
+}
+
+function resolveSupabaseRuntime() {
+  const status = spawnSync(
+    'npx',
+    ['-y', 'supabase@latest', 'status', '-o', 'env'],
+    {
+      encoding: 'utf8',
+      shell: process.platform === 'win32',
+      env: { ...process.env },
+      timeout: 30000,
+      maxBuffer: 1024 * 1024,
+    },
+  )
+
+  if (status.error) {
+    throw status.error
+  }
+
+  if (status.status !== 0) {
+    const details = `${status.stdout ?? ''}${status.stderr ?? ''}`.trim()
+    throw new Error(
+      `Unable to resolve local Supabase runtime from supabase status: ${details}`,
+    )
+  }
+
+  const parsed = parseEnvAssignments(
+    `${status.stdout ?? ''}\n${status.stderr ?? ''}`,
+  )
+  const supabaseUrl = parsed.API_URL?.trim()
+  const publishableKey = parsed.ANON_KEY?.trim()
+
+  if (!supabaseUrl || !publishableKey) {
+    throw new Error(
+      'Supabase local runtime is missing API_URL or ANON_KEY values',
+    )
+  }
+
+  return {
+    supabaseUrl,
+    publishableKey,
+  }
 }
 
 function spawnSyncChecked(command, args, options = {}) {
@@ -62,8 +185,8 @@ async function waitFor(url, options = {}, timeoutMs = 30000) {
   const start = Date.now()
   while (Date.now() - start < timeoutMs) {
     try {
-      const response = await fetch(url, options)
-      if (response.ok) {
+      const response = await httpRequest(url, options)
+      if (response.statusCode >= 200 && response.statusCode < 300) {
         return
       }
     } catch {
@@ -72,6 +195,40 @@ async function waitFor(url, options = {}, timeoutMs = 30000) {
     await new Promise((resolve) => setTimeout(resolve, 750))
   }
   throw new Error(`Timed out waiting for ${url}`)
+}
+
+function httpRequest(urlString, options = {}) {
+  const url = new URL(urlString)
+  const transport = url.protocol === 'https:' ? https : http
+
+  return new Promise((resolve, reject) => {
+    const request = transport.request(
+      {
+        method: options.method ?? 'GET',
+        hostname: url.hostname,
+        port: url.port || (url.protocol === 'https:' ? 443 : 80),
+        path: `${url.pathname}${url.search}`,
+        headers: options.headers ?? {},
+        agent: false,
+      },
+      (response) => {
+        let body = ''
+        response.setEncoding('utf8')
+        response.on('data', (chunk) => {
+          body += chunk
+        })
+        response.on('end', () => {
+          resolve({ statusCode: response.statusCode ?? 0, body })
+        })
+      },
+    )
+
+    request.on('error', reject)
+    if (options.body) {
+      request.write(options.body)
+    }
+    request.end()
+  })
 }
 
 function waitForExit(proc, timeoutMs = 5000) {
@@ -156,11 +313,48 @@ async function shutdown(processes) {
   await Promise.all(processes.map((proc) => stopProcess(proc)))
 }
 
-async function waitForVisible(page, testId) {
+async function waitForVisible(page, testId, timeoutMs = 30000) {
   await page.getByTestId(testId).first().waitFor({
     state: 'visible',
-    timeout: 30000,
+    timeout: timeoutMs,
   })
+}
+
+async function openPublisherLanding(page, baseUrl, attempts = 3) {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    await page.goto(`${baseUrl}/publish`, { waitUntil: 'networkidle' })
+
+    try {
+      await waitForVisible(page, 'publisher-landing', 30000)
+      return
+    } catch (error) {
+      if (attempt >= attempts) {
+        const currentUrl = page.url()
+        const authEntryCount = await page.getByTestId('auth-entry-page').count()
+        const authUserCount = await page.getByTestId('auth-user-email').count()
+        const authErrorCount = await page.getByTestId('auth-error').count()
+        const notFoundCount = await page.getByTestId('router-not-found').count()
+        const showErrorButtons = page.getByText('Show Error')
+        if ((await showErrorButtons.count()) > 0) {
+          await showErrorButtons
+            .first()
+            .click()
+            .catch(() => {})
+        }
+        const bodyText = await page
+          .locator('body')
+          .innerText()
+          .catch(() => '')
+        throw new Error(
+          `Publisher landing not visible after ${attempts} attempts. url=${currentUrl} authEntry=${authEntryCount} authUser=${authUserCount} authError=${authErrorCount} notFound=${notFoundCount} body=${bodyText.slice(0, 500)}`,
+        )
+      }
+
+      await page.goto(`${baseUrl}/learn`, { waitUntil: 'networkidle' })
+      await waitForVisible(page, 'auth-user-email', 60000)
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+    }
+  }
 }
 
 async function readValues(locator) {
@@ -197,6 +391,8 @@ const stack = {
   webPort: 0,
   baseUrl: '',
   processes: [],
+  authStorageDir: '',
+  authStoragePath: '',
 }
 
 let stackStopPromise
@@ -211,18 +407,39 @@ async function ensureStackStopped() {
 }
 
 before(async () => {
+  forceStopDevProcesses()
+
+  spawnSyncChecked(process.execPath, ['scripts/dev-db.mjs', 'up'], {
+    shell: process.platform === 'win32',
+    env: {
+      ...process.env,
+    },
+  })
+
+  const supabaseRuntime = resolveSupabaseRuntime()
   const reserved = new Set()
   stack.apiPort = await findAvailablePort(4000, reserved)
   reserved.add(stack.apiPort)
-  stack.webPort = await findAvailablePort(4100, reserved)
+  stack.webPort = 4100
+  const webPortAvailable = await canListen(stack.webPort, '127.0.0.1')
+  if (webPortAvailable === false) {
+    throw new Error(
+      'Web port 4100 must be available for magic-link redirect in e2e auth fixture',
+    )
+  }
   stack.baseUrl = `http://localhost:${stack.webPort}`
+  stack.authStorageDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), 'learn-active-publisher-auth-'),
+  )
+  stack.authStoragePath = path.join(stack.authStorageDir, 'storage-state.json')
 
   spawnSyncChecked(pnpmCmd, ['build'], {
     shell: process.platform === 'win32',
     env: {
       ...process.env,
       VITE_GRAPHQL_ENDPOINT: `http://localhost:${stack.apiPort}/graphql`,
-      VITE_AUTH_BYPASS_FOR_E2E: 'true',
+      VITE_SUPABASE_URL: supabaseRuntime.supabaseUrl,
+      VITE_SUPABASE_PUBLISHABLE_KEY: supabaseRuntime.publishableKey,
     },
   })
 
@@ -239,14 +456,15 @@ before(async () => {
       '--port',
       String(stack.apiPort),
       '--var',
-      'API_AUTH_BYPASS_FOR_E2E:true',
+      `SUPABASE_URL:${supabaseRuntime.supabaseUrl}`,
     ],
     {
       shell: process.platform === 'win32',
       env: {
         ...process.env,
         PORT: String(stack.apiPort),
-        API_AUTH_BYPASS_FOR_E2E: 'true',
+        APP_ENV: 'local',
+        SUPABASE_URL: supabaseRuntime.supabaseUrl,
       },
     },
   )
@@ -271,9 +489,8 @@ before(async () => {
         GRAPHQL_ENDPOINT: `http://localhost:${stack.apiPort}/graphql`,
         VITE_GRAPHQL_ENDPOINT: `http://localhost:${stack.apiPort}/graphql`,
         EXPO_PUBLIC_GRAPHQL_ENDPOINT: `http://localhost:${stack.apiPort}/graphql`,
-        AUTH_BYPASS_FOR_E2E: 'true',
-        VITE_AUTH_BYPASS_FOR_E2E: 'true',
-        API_AUTH_BYPASS_FOR_E2E: 'true',
+        VITE_SUPABASE_URL: supabaseRuntime.supabaseUrl,
+        VITE_SUPABASE_PUBLISHABLE_KEY: supabaseRuntime.publishableKey,
       },
     },
   )
@@ -285,6 +502,18 @@ before(async () => {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ query: '{ health }' }),
   })
+  await waitFor(`${stack.baseUrl}/auth`)
+
+  await createAuthStorageState({
+    chromium,
+    baseUrl: stack.baseUrl,
+    storageStatePath: stack.authStoragePath,
+    email: `publisher-${Date.now().toString(36)}@example.test`,
+    returnToPath: '/learn',
+    waitForTestId: 'auth-user-email',
+    waitForTestIdTimeoutMs: 90000,
+  })
+
   await waitFor(`${stack.baseUrl}/publish`)
 })
 
@@ -303,7 +532,59 @@ after(async () => {
   if (debugE2eShutdown) {
     console.error('[e2e:shutdown] end')
   }
+
+  if (stack.authStorageDir) {
+    fs.rmSync(stack.authStorageDir, { recursive: true, force: true })
+  }
 })
+
+test(
+  'publisher auth fixture stores reusable magic-link session @eval(EVAL-AUTH-LOCAL-005)',
+  { timeout: 60000 },
+  async () => {
+    assert.equal(
+      fs.existsSync(stack.authStoragePath),
+      true,
+      'auth storage-state file should exist',
+    )
+    const contents = fs.readFileSync(stack.authStoragePath, 'utf8')
+    assert.ok(contents.includes('cookies') || contents.includes('origins'))
+
+    const accessToken = extractAccessTokenFromStorageState(
+      stack.authStoragePath,
+    )
+    assert.ok(
+      accessToken,
+      'storage-state should contain a Supabase access token',
+    )
+
+    const response = await httpRequest(
+      `http://localhost:${stack.apiPort}/graphql`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ query: '{ courses { id } }' }),
+      },
+    )
+    assert.equal(response.statusCode, 200)
+
+    const payload = JSON.parse(response.body)
+    assert.equal(
+      Array.isArray(payload.errors),
+      false,
+      payload.errors
+        ? JSON.stringify(payload.errors)
+        : 'unexpected GraphQL error array',
+    )
+    assert.ok(
+      Array.isArray(payload?.data?.courses),
+      'courses query should return data',
+    )
+  },
+)
 
 test(
   'publisher landing and block authoring flow @eval(EVAL-PUBLISHERS-COURSE-001,EVAL-PUBLISHERS-COURSE-002,EVAL-PUBLISHERS-COURSE-003,EVAL-PUBLISHERS-COURSE-004)',
@@ -313,9 +594,11 @@ test(
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     })
-    const page = await browser.newPage({
+    const context = await browser.newContext({
+      storageState: stack.authStoragePath,
       viewport: { width: 1440, height: 900 },
     })
+    const page = await context.newPage()
 
     const unique = Date.now().toString(36)
     const courseTitle = `E2E Course ${unique}`
@@ -329,8 +612,10 @@ test(
     const exerciseA = `Exercise A ${unique}`
 
     try {
-      await page.goto(`${stack.baseUrl}/publish`, { waitUntil: 'networkidle' })
-      await waitForVisible(page, 'publisher-landing')
+      await page.goto(`${stack.baseUrl}/learn`, { waitUntil: 'networkidle' })
+      await waitForVisible(page, 'auth-user-email', 90000)
+
+      await openPublisherLanding(page, stack.baseUrl)
       await page.getByTestId('publisher-create-course').click()
       await waitForVisible(page, 'publisher-home')
 
@@ -658,6 +943,7 @@ test(
         'exercise position should persist after return',
       )
     } finally {
+      await context.close()
       await browser.close()
       await ensureStackStopped()
     }

@@ -50,9 +50,26 @@ This document describes the architecture for the learning platform, including le
 
 ## Deployment and Operations
 
-- The web app is built and deployed as a single service.
-- Mobile app ships via platform stores with OTA updates where possible.
-- API runs as a standalone service connected to PostgreSQL via `DATABASE_URL` (Supabase-hosted in production, Supabase local stack in development).
+- Local development:
+
+  - Canonical startup is `pnpm db:up` then `pnpm dev`.
+  - API runs with local Wrangler Worker emulation.
+  - Web runs with Vite dev server.
+  - Supabase local stack is used for database and auth dependencies.
+
+- Staging:
+
+  - Deploys automatically from `main` via GitHub Actions.
+  - Uses dedicated staging Cloudflare Worker and Pages resources.
+  - Uses dedicated staging Supabase project URL and publishable key secrets.
+
+- Production:
+
+  - Deploys manually via GitHub Actions using explicit `commit_ref`.
+  - Uses dedicated production Cloudflare Worker and Pages resources.
+  - Uses dedicated production Supabase project URL and publishable key secrets.
+
+For detailed deployment, release, and rollback procedures, see `architecture/ci-cd.md`.
 
 ## Cross-Cutting Concerns
 
@@ -63,4 +80,6 @@ This document describes the architecture for the learning platform, including le
 ## References
 
 - Decision logs: `decision-log/`
-- Evaluations: `evaluations/platform-initialization.md`
+- Evaluations: `evaluations/`
+- Platform initialization evaluation: `evaluations/platform-initialization.md`
+- CI/CD runbook: `architecture/ci-cd.md`

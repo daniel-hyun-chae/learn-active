@@ -291,7 +291,6 @@ const build = run(pnpmCmd, ['build'], {
   env: {
     ...process.env,
     VITE_GRAPHQL_ENDPOINT: `http://localhost:${apiPort}/graphql`,
-    VITE_AUTH_BYPASS_FOR_E2E: process.env.VITE_AUTH_BYPASS_FOR_E2E ?? 'true',
   },
 })
 
@@ -318,7 +317,7 @@ build.on('exit', async (code) => {
       '--port',
       String(apiPort),
       '--var',
-      `API_AUTH_BYPASS_FOR_E2E:${process.env.API_AUTH_BYPASS_FOR_E2E ?? 'true'}`,
+      `SUPABASE_URL:${process.env.SUPABASE_URL ?? 'http://127.0.0.1:54321'}`,
     ],
     {
       shell: process.platform === 'win32',
@@ -326,7 +325,6 @@ build.on('exit', async (code) => {
         ...process.env,
         PORT: String(apiPort),
         APP_ENV: process.env.APP_ENV ?? 'local',
-        API_AUTH_BYPASS_FOR_E2E: process.env.API_AUTH_BYPASS_FOR_E2E ?? 'true',
       },
     },
   )
@@ -353,9 +351,6 @@ build.on('exit', async (code) => {
         GRAPHQL_ENDPOINT: `http://localhost:${apiPort}/graphql`,
         VITE_GRAPHQL_ENDPOINT: `http://localhost:${apiPort}/graphql`,
         EXPO_PUBLIC_GRAPHQL_ENDPOINT: `http://localhost:${apiPort}/graphql`,
-        VITE_AUTH_BYPASS_FOR_E2E:
-          process.env.VITE_AUTH_BYPASS_FOR_E2E ?? 'true',
-        API_AUTH_BYPASS_FOR_E2E: process.env.API_AUTH_BYPASS_FOR_E2E ?? 'true',
       },
     },
   )

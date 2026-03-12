@@ -26,11 +26,11 @@ async function loadLandingData(): Promise<LoaderData> {
   try {
     const data = await fetchGraphQL<{
       health: string
-      courses: LoaderData['courses']
+      learnerCourses: LoaderData['courses']
     }>(
       `query LandingCourses {
         health
-        courses {
+        learnerCourses {
           id
           title
           description
@@ -47,7 +47,7 @@ async function loadLandingData(): Promise<LoaderData> {
     ).__API_HEALTH__ = data.health
     return {
       apiHealth: data.health,
-      courses: data.courses,
+      courses: data.learnerCourses,
     }
   } catch {
     return {

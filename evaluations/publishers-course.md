@@ -45,3 +45,29 @@ Criteria:
 - Tree rows are visually compact and preserve readable hierarchy with indentation and nesting cues.
 - Module, lesson, content page, and exercise row actions are shown as side affordances.
 - Add, move up/down, and delete interactions remain available at each relevant level.
+
+## EVAL-PUBLISHERS-COURSE-005: Owner-scoped publisher management access
+
+Goal: Publisher management access is owner-scoped, while learner-facing course reads remain a separate policy concern.
+Criteria:
+
+- Publisher landing and editor routes query owner-scoped fields for management access (`publisherCourses`, `publisherCourse`).
+- Learner routes query learner-facing fields (`learnerCourses`, `learnerCourse`) and do not rely on publisher ownership fields.
+- Existing compatibility aliases can remain, but publisher CRUD operations resolve ownership from authenticated user id, not email.
+- Ownership provisioning for authenticated users is idempotent and enforces personal owner membership invariants.
+- Legacy migrated courses assigned to the reserved system owner are treated as learner-facing/system content and are not surfaced as editable personal publisher courses by default.
+
+## EVAL-PUBLISHERS-COURSE-006: Draft versioning and publish workflow
+
+Goal: Publishers can evolve course content through internal versions with history, compare, publish, and rollback-as-new-version.
+Criteria:
+
+- Publisher save operations update a draft version tied to course identity and owner scope.
+- Publishing promotes the active draft to the published version and updates publication projection.
+- Publishing archives the previously published version and keeps exactly one active published version per course.
+- Creating a new draft from published content auto-assigns the next system-managed version number.
+- Version history is available with metadata for each version (version number, status, created/published timestamps, author, and change note).
+- Compare supports a structured diff summary for content fields (added, removed, changed) and title/description change flags.
+- Rollback is implemented as restore-as-draft from an older version, then publish as a new next version (history is never rewritten).
+- Publisher create/edit/publish operations are available only to owner members with manage roles.
+- Public catalog and learner flows never expose unpublished draft versions.

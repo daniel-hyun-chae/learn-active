@@ -9,7 +9,10 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { PrimaryButton, Surface } from '@app/shared-ui'
 import { requireWebSession } from '../features/auth/route-guard'
-import { fetchGraphQL } from '../shared/api/graphql'
+import {
+  fetchGraphQL,
+  setGraphQLAccessTokenProvider,
+} from '../shared/api/graphql'
 import {
   emptyCourse,
   toCourseInput,
@@ -22,7 +25,7 @@ type CourseSummary = {
 }
 
 type LoaderData = {
-  courses: CourseSummary[]
+  publisherCourses: CourseSummary[]
 }
 
 export const Route = createFileRoute('/publish')({
@@ -30,8 +33,11 @@ export const Route = createFileRoute('/publish')({
     await requireWebSession(location.pathname)
   },
   loader: async (): Promise<LoaderData> => {
+    const session = await requireWebSession('/publish')
+    setGraphQLAccessTokenProvider(async () => session?.access_token ?? null)
+
     const data = await fetchGraphQL<LoaderData>(`query PublisherCoursesLanding {
-      courses {
+      publisherCourses {
         id
         title
         description
@@ -108,7 +114,7 @@ function PublisherLandingRoute() {
       ) : null}
 
       <div className="course-grid">
-        {data.courses.map((course: CourseSummary) => (
+        {data.publisherCourses.map((course: CourseSummary) => (
           <Surface key={course.id} data-test="publisher-course-card">
             <div className="course-card">
               <div>
@@ -128,7 +134,7 @@ function PublisherLandingRoute() {
         ))}
       </div>
 
-      {data.courses.length === 0 ? (
+      {data.publisherCourses.length === 0 ? (
         <p className="muted">{t('publishers.home.empty')}</p>
       ) : null}
     </section>

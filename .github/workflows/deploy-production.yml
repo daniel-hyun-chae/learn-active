@@ -128,7 +128,7 @@ jobs:
           VITE_APP_ENV: production
           VITE_GRAPHQL_ENDPOINT: ${{ secrets.API_URL_PROD }}
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_PROJECT_URL_PROD }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY_PROD }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY_PROD }}
         run: pnpm --filter @app/web build
 
       - name: Verify built web GraphQL endpoint for production

@@ -173,12 +173,156 @@ export class Course {
   @Field(() => ID)
   id!: string
 
+  @Field(() => ID)
+  versionId!: string
+
+  @Field(() => Int)
+  version!: number
+
+  @Field(() => String)
+  status!: string
+
   @Field(() => String)
   title!: string
 
   @Field(() => String)
   description!: string
 
+  @Field(() => String, { nullable: true })
+  changeNote?: string | null
+
+  @Field(() => String)
+  createdAt!: string
+
+  @Field(() => String)
+  createdBy!: string
+
+  @Field(() => String, { nullable: true })
+  publishedAt?: string | null
+
+  @Field(() => String, { nullable: true })
+  archivedAt?: string | null
+
   @Field(() => [Module])
   modules!: Module[]
+}
+
+@ObjectType()
+export class CourseVersionHistory {
+  @Field(() => ID)
+  versionId!: string
+
+  @Field(() => Int)
+  version!: number
+
+  @Field(() => String)
+  status!: string
+
+  @Field(() => String)
+  title!: string
+
+  @Field(() => String, { nullable: true })
+  changeNote?: string | null
+
+  @Field(() => String)
+  createdAt!: string
+
+  @Field(() => String)
+  createdBy!: string
+
+  @Field(() => String, { nullable: true })
+  publishedAt?: string | null
+
+  @Field(() => String, { nullable: true })
+  archivedAt?: string | null
+}
+
+@ObjectType()
+export class CourseVersionDiff {
+  @Field(() => ID)
+  courseId!: string
+
+  @Field(() => ID)
+  fromVersionId!: string
+
+  @Field(() => ID)
+  toVersionId!: string
+
+  @Field(() => Int)
+  fromVersion!: number
+
+  @Field(() => Int)
+  toVersion!: number
+
+  @Field(() => Boolean)
+  titleChanged!: boolean
+
+  @Field(() => Boolean)
+  descriptionChanged!: boolean
+
+  @Field(() => [String])
+  addedFields!: string[]
+
+  @Field(() => [String])
+  removedFields!: string[]
+
+  @Field(() => [String])
+  changedFields!: string[]
+}
+
+@ObjectType()
+export class PublicCourse {
+  @Field(() => ID)
+  id!: string
+
+  @Field(() => String)
+  slug!: string
+
+  @Field(() => String)
+  title!: string
+
+  @Field(() => String)
+  description!: string
+
+  @Field(() => String, { nullable: true })
+  ownerDisplayName?: string
+}
+
+@ObjectType()
+export class MyCourse {
+  @Field(() => ID)
+  id!: string
+
+  @Field(() => String)
+  slug!: string
+
+  @Field(() => String)
+  title!: string
+
+  @Field(() => String)
+  description!: string
+
+  @Field(() => Int)
+  version!: number
+
+  @Field(() => String)
+  status!: string
+
+  @Field(() => String)
+  enrolledAt!: string
+}
+
+@ObjectType()
+export class Enrollment {
+  @Field(() => ID)
+  id!: string
+
+  @Field(() => ID)
+  courseId!: string
+
+  @Field(() => String)
+  status!: string
+
+  @Field(() => String)
+  enrolledAt!: string
 }

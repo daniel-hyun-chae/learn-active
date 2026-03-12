@@ -7,6 +7,8 @@ import { fetchGraphQL } from '../../shared/api/graphql'
 import type {
   ContentDraft,
   CourseDraft,
+  CourseVersionDiff,
+  CourseVersionHistoryEntry,
   ExerciseBlankDraft,
   ExerciseDraft,
   ExerciseStepDraft,
@@ -39,6 +41,52 @@ type PublisherHomeProps = {
 
 type Status = { type: 'idle' | 'saving' | 'saved' | 'error'; message?: string }
 
+const COURSE_DRAFT_SELECTION = `
+  id
+  versionId
+  version
+  status
+  title
+  description
+  changeNote
+  createdAt
+  createdBy
+  publishedAt
+  archivedAt
+  modules {
+    id
+    title
+    order
+    lessons {
+      id
+      title
+      order
+      contents { id type text imageUrl imageAlt lexicalJson }
+      contentPages {
+        id
+        title
+        order
+        contents { id type text imageUrl imageAlt lexicalJson }
+      }
+      exercises {
+        id
+        type
+        title
+        instructions
+        steps {
+          id
+          order
+          prompt
+          threadId
+          threadTitle
+          segments { type text blankId }
+          blanks { id correct variant options }
+        }
+      }
+    }
+  }
+`
+
 type Selection =
   | { type: 'course' }
   | { type: 'module'; moduleId: string }
@@ -63,7 +111,6 @@ function toLearnerExercise(exercise: ExerciseDraft): Exercise {
     id: exercise.id ?? createId('exercise'),
     type: 'FILL_IN_THE_BLANK',
     title: exercise.title,
-    instructions: exercise.instructions,
     steps: exercise.steps.map((step) => {
       const templateValue =
         typeof step.template === 'string' ? step.template : undefined
@@ -133,12 +180,53 @@ export function PublisherHome({ course }: PublisherHomeProps) {
     designer: false,
     preview: false,
   })
+  const [changeNoteDraft, setChangeNoteDraft] = useState<string>('')
+  const [historyEntries, setHistoryEntries] = useState<
+    CourseVersionHistoryEntry[]
+  >([])
+  const [historyVisible, setHistoryVisible] = useState<boolean>(false)
+  const [compareFromId, setCompareFromId] = useState<string>('')
+  const [compareToId, setCompareToId] = useState<string>('')
+  const [diff, setDiff] = useState<CourseVersionDiff | null>(null)
 
   useEffect(() => {
     setDraft(normalizeDraft(course))
+    setChangeNoteDraft(course.changeNote ?? '')
     setSelection({ type: 'course' })
     setStatus({ type: 'idle' })
+    setDiff(null)
   }, [course])
+
+  async function loadVersionHistory() {
+    if (!draft.id) {
+      return
+    }
+    const data = await fetchGraphQL<{
+      courseVersionHistory: CourseVersionHistoryEntry[]
+    }>(
+      `query CourseVersionHistory($courseId: String!) {
+        courseVersionHistory(courseId: $courseId) {
+          versionId
+          version
+          status
+          title
+          changeNote
+          createdAt
+          createdBy
+          publishedAt
+          archivedAt
+        }
+      }`,
+      { courseId: draft.id },
+    )
+    setHistoryEntries(data.courseVersionHistory)
+    if (!compareFromId && data.courseVersionHistory[0]) {
+      setCompareFromId(data.courseVersionHistory[0].versionId)
+    }
+    if (!compareToId && data.courseVersionHistory[1]) {
+      setCompareToId(data.courseVersionHistory[1].versionId)
+    }
+  }
 
   const selectedModule = useMemo(() => {
     if (selection.type === 'module') {
@@ -295,41 +383,7 @@ export function PublisherHome({ course }: PublisherHomeProps) {
       const data = await fetchGraphQL<{ seedSampleCourse: CourseDraft }>(
         `mutation SeedSampleCourse {
           seedSampleCourse {
-            id
-            title
-            description
-            modules {
-              id
-              title
-              order
-              lessons {
-                id
-                title
-                order
-                contents { id type text imageUrl imageAlt lexicalJson }
-                contentPages {
-                  id
-                  title
-                  order
-                  contents { id type text imageUrl imageAlt lexicalJson }
-                }
-                exercises {
-                  id
-                  type
-                  title
-                  instructions
-                  steps {
-                    id
-                    order
-                    prompt
-                    threadId
-                    threadTitle
-                    segments { type text blankId }
-                    blanks { id correct variant options }
-                  }
-                }
-              }
-            }
+            ${COURSE_DRAFT_SELECTION}
           }
         }`,
       )
@@ -348,41 +402,7 @@ export function PublisherHome({ course }: PublisherHomeProps) {
       const data = await fetchGraphQL<{ upsertCourse: CourseDraft }>(
         `mutation SaveCourse($input: CourseInput!) {
           upsertCourse(input: $input) {
-            id
-            title
-            description
-            modules {
-              id
-              title
-              order
-              lessons {
-                id
-                title
-                order
-                contents { id type text imageUrl imageAlt lexicalJson }
-                contentPages {
-                  id
-                  title
-                  order
-                  contents { id type text imageUrl imageAlt lexicalJson }
-                }
-                exercises {
-                  id
-                  type
-                  title
-                  instructions
-                  steps {
-                    id
-                    order
-                    prompt
-                    threadId
-                    threadTitle
-                    segments { type text blankId }
-                    blanks { id correct variant options }
-                  }
-                }
-              }
-            }
+            ${COURSE_DRAFT_SELECTION}
           }
         }`,
         { input },
@@ -392,6 +412,131 @@ export function PublisherHome({ course }: PublisherHomeProps) {
     } catch (error) {
       setStatus({ type: 'error', message: (error as Error).message })
     }
+  }
+
+  async function handleCreateDraftFromPublished() {
+    if (!draft.id) {
+      setStatus({ type: 'error', message: t('publishers.status.errorGeneric') })
+      return
+    }
+    setStatus({ type: 'saving' })
+    try {
+      const data = await fetchGraphQL<{
+        createDraftFromPublished: CourseDraft
+      }>(
+        `mutation CreateDraftFromPublished($courseId: String!) {
+          createDraftFromPublished(courseId: $courseId) {
+            ${COURSE_DRAFT_SELECTION}
+          }
+        }`,
+        { courseId: draft.id },
+      )
+      setDraft(normalizeDraft(data.createDraftFromPublished))
+      setStatus({ type: 'saved', message: t('publishers.status.draftCreated') })
+      if (historyVisible) {
+        await loadVersionHistory()
+      }
+    } catch (error) {
+      setStatus({ type: 'error', message: (error as Error).message })
+    }
+  }
+
+  async function handlePublishDraft() {
+    if (!draft.id) {
+      setStatus({ type: 'error', message: t('publishers.status.errorGeneric') })
+      return
+    }
+    setStatus({ type: 'saving' })
+    try {
+      const data = await fetchGraphQL<{ publishCourseDraft: CourseDraft }>(
+        `mutation PublishCourseDraft($courseId: String!, $changeNote: String) {
+          publishCourseDraft(courseId: $courseId, changeNote: $changeNote) {
+            ${COURSE_DRAFT_SELECTION}
+          }
+        }`,
+        {
+          courseId: draft.id,
+          changeNote: changeNoteDraft.trim() || null,
+        },
+      )
+      setDraft(normalizeDraft(data.publishCourseDraft))
+      setStatus({ type: 'saved', message: t('publishers.status.published') })
+      if (historyVisible) {
+        await loadVersionHistory()
+      }
+    } catch (error) {
+      setStatus({ type: 'error', message: (error as Error).message })
+    }
+  }
+
+  async function handleRestoreVersionAsDraft(versionId: string) {
+    if (!draft.id) {
+      setStatus({ type: 'error', message: t('publishers.status.errorGeneric') })
+      return
+    }
+    setStatus({ type: 'saving' })
+    try {
+      const data = await fetchGraphQL<{ restoreVersionAsDraft: CourseDraft }>(
+        `mutation RestoreVersionAsDraft($courseId: String!, $versionId: String!) {
+          restoreVersionAsDraft(courseId: $courseId, versionId: $versionId) {
+            ${COURSE_DRAFT_SELECTION}
+          }
+        }`,
+        { courseId: draft.id, versionId },
+      )
+      setDraft(normalizeDraft(data.restoreVersionAsDraft))
+      setStatus({ type: 'saved', message: t('publishers.status.restored') })
+      if (historyVisible) {
+        await loadVersionHistory()
+      }
+    } catch (error) {
+      setStatus({ type: 'error', message: (error as Error).message })
+    }
+  }
+
+  async function handleCompareVersions() {
+    if (!draft.id || !compareFromId || !compareToId) {
+      return
+    }
+    setStatus({ type: 'saving' })
+    try {
+      const data = await fetchGraphQL<{ courseVersionDiff: CourseVersionDiff }>(
+        `query CourseVersionDiff($courseId: String!, $fromVersionId: String!, $toVersionId: String!) {
+          courseVersionDiff(courseId: $courseId, fromVersionId: $fromVersionId, toVersionId: $toVersionId) {
+            courseId
+            fromVersionId
+            toVersionId
+            fromVersion
+            toVersion
+            titleChanged
+            descriptionChanged
+            addedFields
+            removedFields
+            changedFields
+          }
+        }`,
+        {
+          courseId: draft.id,
+          fromVersionId: compareFromId,
+          toVersionId: compareToId,
+        },
+      )
+      setDiff(data.courseVersionDiff)
+      setStatus({ type: 'saved', message: t('publishers.status.compared') })
+    } catch (error) {
+      setStatus({ type: 'error', message: (error as Error).message })
+    }
+  }
+
+  async function handleToggleHistory() {
+    if (!historyVisible) {
+      try {
+        await loadVersionHistory()
+      } catch (error) {
+        setStatus({ type: 'error', message: (error as Error).message })
+      }
+    }
+    setHistoryVisible((prev) => !prev)
   }
 
   function addModule() {
@@ -1065,8 +1210,7 @@ export function PublisherHome({ course }: PublisherHomeProps) {
                 key={page.id}
                 type="button"
                 className={
-                  selection.type === 'contentPage' &&
-                  selection.pageId === page.id
+                  selectedContentPage?.id === page.id
                     ? 'publisher-node selected'
                     : 'publisher-node'
                 }
@@ -1097,8 +1241,7 @@ export function PublisherHome({ course }: PublisherHomeProps) {
                 key={exercise.id}
                 type="button"
                 className={
-                  selection.type === 'exercise' &&
-                  selection.exerciseId === exercise.id
+                  selectedExercise?.id === exercise.id
                     ? 'publisher-node selected'
                     : 'publisher-node'
                 }
@@ -1550,7 +1693,7 @@ export function PublisherHome({ course }: PublisherHomeProps) {
             lesson={toLearnerLesson(selectedLesson)}
             selection={{
               type: 'contentPage',
-              contentPageId: selectedContentPage.id,
+              contentPageId: selectedContentPage.id ?? '',
             }}
           />
         </div>
@@ -1597,7 +1740,49 @@ export function PublisherHome({ course }: PublisherHomeProps) {
           >
             {t('publishers.home.save')}
           </PrimaryButton>
+          <PrimaryButton
+            onClick={handleCreateDraftFromPublished}
+            aria-label={t('publishers.actions.createDraft')}
+            data-test="publisher-create-draft"
+          >
+            {t('publishers.actions.createDraft')}
+          </PrimaryButton>
+          <PrimaryButton
+            onClick={handlePublishDraft}
+            aria-label={t('publishers.actions.publish')}
+            data-test="publisher-publish"
+          >
+            {t('publishers.actions.publish')}
+          </PrimaryButton>
+          <button
+            type="button"
+            className="ghost-button"
+            onClick={handleToggleHistory}
+            data-test="publisher-history-toggle"
+          >
+            {historyVisible
+              ? t('publishers.history.hide')
+              : t('publishers.history.show')}
+          </button>
         </div>
+      </div>
+
+      <div className="publisher-section" data-test="publisher-version-meta">
+        <p className="muted">
+          {t('publishers.version.current', {
+            version: draft.version ?? 0,
+            status: draft.status ?? 'draft',
+          })}
+        </p>
+        <label className="publisher-field publisher-full">
+          {t('publishers.version.changeNote')}
+          <input
+            type="text"
+            value={changeNoteDraft}
+            onChange={(event) => setChangeNoteDraft(event.target.value)}
+            data-test="publisher-change-note"
+          />
+        </label>
       </div>
 
       {status.type !== 'idle' ? (
@@ -1608,6 +1793,110 @@ export function PublisherHome({ course }: PublisherHomeProps) {
         >
           {status.message}
         </p>
+      ) : null}
+
+      {historyVisible ? (
+        <Surface className="publisher-section" data-test="publisher-history">
+          <div className="section-header">
+            <h3>{t('publishers.history.title')}</h3>
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={loadVersionHistory}
+              data-test="publisher-history-refresh"
+            >
+              {t('publishers.history.refresh')}
+            </button>
+          </div>
+
+          <div className="publisher-grid">
+            <label className="publisher-field">
+              {t('publishers.compare.from')}
+              <select
+                value={compareFromId}
+                onChange={(event) => setCompareFromId(event.target.value)}
+                data-test="publisher-compare-from"
+              >
+                <option value="">{t('publishers.compare.select')}</option>
+                {historyEntries.map((entry) => (
+                  <option
+                    key={`from-${entry.versionId}`}
+                    value={entry.versionId}
+                  >
+                    {`v${entry.version} (${entry.status})`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="publisher-field">
+              {t('publishers.compare.to')}
+              <select
+                value={compareToId}
+                onChange={(event) => setCompareToId(event.target.value)}
+                data-test="publisher-compare-to"
+              >
+                <option value="">{t('publishers.compare.select')}</option>
+                {historyEntries.map((entry) => (
+                  <option key={`to-${entry.versionId}`} value={entry.versionId}>
+                    {`v${entry.version} (${entry.status})`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="publisher-inline-actions publisher-full">
+              <PrimaryButton
+                onClick={handleCompareVersions}
+                data-test="publisher-compare-run"
+                aria-label={t('publishers.compare.run')}
+              >
+                {t('publishers.compare.run')}
+              </PrimaryButton>
+            </div>
+          </div>
+
+          <ul className="publisher-stack" data-test="publisher-history-list">
+            {historyEntries.map((entry) => (
+              <li key={entry.versionId} className="publisher-node">
+                <div>
+                  <strong>{`v${entry.version}`}</strong>{' '}
+                  <span className="muted">{entry.status}</span>
+                  <div className="muted">{entry.title}</div>
+                  <div className="muted">{entry.changeNote ?? '-'}</div>
+                </div>
+                <div className="publisher-node-actions">
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    data-test="publisher-restore-version"
+                    onClick={() => handleRestoreVersionAsDraft(entry.versionId)}
+                  >
+                    {t('publishers.actions.restoreDraft')}
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          {diff ? (
+            <div className="publisher-section" data-test="publisher-diff">
+              <h4>
+                {t('publishers.compare.summary', {
+                  from: diff.fromVersion,
+                  to: diff.toVersion,
+                })}
+              </h4>
+              <p className="muted">
+                {t('publishers.compare.flags', {
+                  titleChanged: diff.titleChanged ? 'yes' : 'no',
+                  descriptionChanged: diff.descriptionChanged ? 'yes' : 'no',
+                })}
+              </p>
+              <p>{`${t('publishers.compare.added')}: ${diff.addedFields.join(', ') || '-'}`}</p>
+              <p>{`${t('publishers.compare.removed')}: ${diff.removedFields.join(', ') || '-'}`}</p>
+              <p>{`${t('publishers.compare.changed')}: ${diff.changedFields.join(', ') || '-'}`}</p>
+            </div>
+          ) : null}
+        </Surface>
       ) : null}
 
       <div className={layoutClassName}>

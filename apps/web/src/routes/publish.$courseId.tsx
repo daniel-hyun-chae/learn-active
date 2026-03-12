@@ -6,7 +6,7 @@ import type { CourseDraft } from '../features/publishers/types'
 import { PublisherHome } from '../features/publishers/PublisherHome'
 
 type LoaderData = {
-  course: CourseDraft | null
+  publisherCourse: CourseDraft | null
 }
 
 export const Route = createFileRoute('/publish/$courseId')({
@@ -18,12 +18,20 @@ export const Route = createFileRoute('/publish/$courseId')({
   shouldReload: () => true,
   loader: async ({ params }): Promise<LoaderData> => {
     const { courseId } = params as { courseId: string }
-    const data = await fetchGraphQL<{ course: CourseDraft | null }>(
+    const data = await fetchGraphQL<{ publisherCourse: CourseDraft | null }>(
       `query PublisherCourse($id: String!) {
-        course(id: $id) {
+        publisherCourse(id: $id) {
           id
+          versionId
+          version
+          status
           title
           description
+          changeNote
+          createdAt
+          createdBy
+          publishedAt
+          archivedAt
           modules {
             id
             title
@@ -69,7 +77,7 @@ function PublisherCourseEditorRoute() {
   const { t } = useTranslation()
   const data = Route.useLoaderData()
 
-  if (!data.course) {
+  if (!data.publisherCourse) {
     return (
       <section className="publisher-home" data-test="publisher-course-missing">
         <h2>{t('publishers.course.notFoundTitle')}</h2>
@@ -81,5 +89,5 @@ function PublisherCourseEditorRoute() {
     )
   }
 
-  return <PublisherHome course={data.course} />
+  return <PublisherHome course={data.publisherCourse} />
 }

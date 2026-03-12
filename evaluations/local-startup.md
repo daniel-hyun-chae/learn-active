@@ -17,9 +17,9 @@ Goal: Provide a single dev-mode startup command with fail-hard DB setup and auto
 Criteria:
 
 - A `pnpm dev` script exists and is the primary local/devcontainer startup command.
-- `pnpm dev` runs `setup:local` before starting the dev stack.
-- `setup:local` waits for DB reachability and runs Supabase SQL migrations fail-hard.
-- A `pnpm dev:stack` script exists and starts API + web dev servers with health checks.
+- `pnpm dev` runs internal setup and stack scripts in sequence before reporting success.
+- `scripts/setup-local.mjs` waits for DB reachability and runs Supabase SQL migrations fail-hard.
+- `scripts/dev-stack.mjs` starts API + web dev servers with health checks.
 - The dev stack script verifies the landing page serves its stylesheet.
 - The dev stack script fails fast when API or web processes exit unexpectedly after initial health checks.
 - The dev stack script does not run migrations directly.
@@ -66,20 +66,19 @@ Goal: Provide a simple Supabase local database setup flow for development.
 Criteria:
 
 - The repository exposes `pnpm db:up`, `pnpm db:status`, and `pnpm db:logs` commands.
-- The repository exposes `pnpm db:push` and `pnpm db:reset` commands.
 - The database helper script uses Supabase CLI local workflow (`supabase start`, local status, local migration push/reset).
 - `pnpm db:up` starts Supabase local services reliably in restricted/offline environments by excluding edge runtime by default, with a documented opt-in flag/env to include it.
 - A destructive reset command exists and requires explicit confirmation (`--yes`).
-- The README clearly documents Supabase local startup, migration application, and reset semantics.
+- The README clearly documents Supabase local startup and that `pnpm dev` runs migrations fail-hard.
 
 ## EVAL-PLATFORM-LOCAL-007: Fail-hard local DB setup
 
 Goal: Ensure local dev setup has an explicit fail-hard migration step without blocking container startup.
 Criteria:
 
-- The repository exposes `pnpm setup:local`.
-- `setup:local` waits for DB reachability and then runs Supabase migration push.
-- `setup:local` fails when migrations fail.
+- The repository includes `scripts/setup-local.mjs` and `pnpm dev` invokes it before starting the dev stack.
+- `scripts/setup-local.mjs` waits for DB reachability and then runs Supabase migration push.
+- `scripts/setup-local.mjs` fails when migrations fail.
 - In devcontainer mode, setup logic normalizes localhost DB host usage to `host.docker.internal` for Supabase local connectivity.
 - Devcontainer compose sets `DATABASE_URL` to the Supabase local Postgres endpoint.
 
@@ -88,7 +87,7 @@ Criteria:
 Goal: Ensure local startup validation covers real browser behavior, not only HTTP-level checks.
 Criteria:
 
-- The repository exposes a `pnpm browser:check` script.
+- The repository includes browser runtime checks in `scripts/browser-check.mjs`.
 - Browser checks validate a real browser page load for `/learn`.
 - Browser checks fail on hydration mismatch warnings or client runtime errors.
 - Browser checks validate unknown routes render the global not-found experience.

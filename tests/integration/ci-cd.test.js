@@ -195,7 +195,7 @@ test('built web endpoint verification script validates compiled artifacts @eval(
 })
 
 test('cicd documentation and readme linking @eval(EVAL-PLATFORM-CICD-005)', () => {
-  const docs = read('docs/ci-cd.md')
+  const docs = read('architecture/ci-cd.md')
   const readme = read('README.md')
 
   assert.ok(docs.includes('CI/CD Workflow'))
@@ -213,5 +213,5 @@ test('cicd documentation and readme linking @eval(EVAL-PLATFORM-CICD-005)', () =
   assert.ok(docs.includes('validate:deploy-env'))
   assert.ok(docs.includes('localhost'))
   assert.ok(docs.includes('WEB_URL_STAGING/auth'))
-  assert.ok(readme.includes('docs/ci-cd.md'))
+  assert.ok(readme.includes('architecture/ci-cd.md'))
 })
