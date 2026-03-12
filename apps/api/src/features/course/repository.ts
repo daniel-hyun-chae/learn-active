@@ -693,13 +693,15 @@ export function createInMemoryCourseRepository(): CourseRepository {
   return createRepositoryFromState(sharedMemoryState)
 }
 
-export function createNodeCourseRepository(_db: NodeDb): CourseRepository {
+export function createNodeCourseRepository(db: NodeDb): CourseRepository {
+  void db
   return createRepositoryFromState(sharedMemoryState)
 }
 
-export function createWorkerSupabaseCourseRepository(_config: {
+export function createWorkerSupabaseCourseRepository(config: {
   supabaseUrl: string
   serviceRoleKey: string
 }): CourseRepository {
+  void config
   return createRepositoryFromState(sharedMemoryState)
 }
