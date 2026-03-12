@@ -1,10 +1,5 @@
 import { redirect } from '@tanstack/react-router'
 import { getWebSupabaseClient } from './supabase-client'
-import { isWebAuthBypassEnabled } from '../../shared/api/runtime'
-
-function isE2eBypassEnabled() {
-  return isWebAuthBypassEnabled()
-}
 
 function normalizeReturnTo(value: string | undefined) {
   if (!value) {
@@ -29,10 +24,6 @@ export async function getActiveWebSession() {
 }
 
 export async function requireWebSession(returnTo: string) {
-  if (isE2eBypassEnabled()) {
-    return { user: { id: 'e2e-user' } }
-  }
-
   const client = getWebSupabaseClient()
   if (!client) {
     throw redirect({

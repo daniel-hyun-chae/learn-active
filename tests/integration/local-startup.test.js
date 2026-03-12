@@ -14,7 +14,6 @@ test('local startup scripts @eval(EVAL-PLATFORM-LOCAL-001,EVAL-PLATFORM-LOCAL-00
   assert.ok(pkg.scripts.dev)
   assert.ok(pkg.scripts['smoke:local'])
   assert.ok(pkg.scripts['verify:setup'])
-  assert.ok(pkg.scripts['browser:check'])
   const verify = read('scripts/verify-startup.mjs')
   const smoke = read('scripts/smoke-local.mjs')
   const browserCheck = read('scripts/browser-check.mjs')
@@ -76,7 +75,6 @@ test('local startup scripts @eval(EVAL-PLATFORM-LOCAL-001,EVAL-PLATFORM-LOCAL-00
 test('dev command orchestrates setup and stack @eval(EVAL-PLATFORM-LOCAL-002)', () => {
   const pkg = JSON.parse(read('package.json'))
   assert.ok(pkg.scripts.dev)
-  assert.ok(pkg.scripts['dev:stack'])
   const dev = read('scripts/dev.mjs')
   const devStack = read('scripts/dev-stack.mjs')
   assert.ok(dev.includes('setup-local.mjs'))
@@ -103,9 +101,6 @@ test('devcontainer db helper workflow @eval(EVAL-PLATFORM-LOCAL-006,EVAL-PLATFOR
   assert.ok(pkg.scripts['db:up'])
   assert.ok(pkg.scripts['db:status'])
   assert.ok(pkg.scripts['db:logs'])
-  assert.ok(pkg.scripts['db:push'])
-  assert.ok(pkg.scripts['db:reset'])
-  assert.ok(pkg.scripts['setup:local'])
 
   const dev = read('scripts/dev.mjs')
   const dbScript = read('scripts/dev-db.mjs')

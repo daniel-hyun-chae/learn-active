@@ -3,7 +3,7 @@
   "dockerComposeFile": "../docker-compose.devcontainer.yml",
   "service": "dev",
   "workspaceFolder": "/workspaces/learn-active",
-  "forwardPorts": [4000, 4100],
+  "forwardPorts": [4000, 4100, 54321, 54324],
   "overrideCommand": false,
   "remoteUser": "node",
   "containerUser": "node",
@@ -22,6 +22,7 @@
     "source=${localEnv:HOME}/.ssh,target=/home/node/.ssh,type=bind",
     "source=${localWorkspaceFolderBasename}-bashhistory,target=/commandhistory,type=volume",
     "source=${localEnv:HOME}/.netrc,target=/home/node/.netrc,type=bind",
+    "source=${localWorkspaceFolderBasename}-opencode-data,target=/home/node/.local/share/opencode,type=volume",
     "source=${localEnv:HOME}/.local/share/opencode/auth.json,target=/home/node/.local/share/opencode/auth.json,type=bind",
     "source=${localEnv:HOME}/.config/opencode,target=/home/node/.config/opencode,type=bind",
     "source=${localWorkspaceFolderBasename}-ms-playwright,target=/home/node/.cache/ms-playwright,type=volume"

@@ -16,16 +16,15 @@ function getRuntimeEnv() {
 function getSupabaseConfig() {
   const env = getRuntimeEnv()
   const supabaseUrl = env.EXPO_PUBLIC_SUPABASE_URL ?? env.SUPABASE_URL
-  const supabaseAnonKey =
-    env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? env.SUPABASE_ANON_KEY
+  const supabasePublishableKey = env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 
-  if (!supabaseUrl || !supabaseAnonKey) {
+  if (!supabaseUrl || !supabasePublishableKey) {
     return null
   }
 
   return {
     supabaseUrl,
-    supabaseAnonKey,
+    supabasePublishableKey,
   }
 }
 
@@ -40,14 +39,18 @@ export function getMobileSupabaseClient() {
     return cachedClient
   }
 
-  cachedClient = createClient(config.supabaseUrl, config.supabaseAnonKey, {
-    auth: {
-      storage: AsyncStorage,
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: false,
+  cachedClient = createClient(
+    config.supabaseUrl,
+    config.supabasePublishableKey,
+    {
+      auth: {
+        storage: AsyncStorage,
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false,
+      },
     },
-  })
+  )
 
   return cachedClient
 }

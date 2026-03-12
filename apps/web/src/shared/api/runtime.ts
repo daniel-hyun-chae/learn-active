@@ -4,21 +4,20 @@ type RuntimeWithConfig = typeof globalThis & {
   __APP_THEME__?: string
   __GRAPHQL_ENDPOINT__?: string
   __SUPABASE_URL__?: string
-  __SUPABASE_ANON_KEY__?: string
+  __SUPABASE_PUBLISHABLE_KEY__?: string
 }
 
 type RuntimeStage = 'local' | 'staging' | 'production'
 
 export type SupabaseRuntimeConfig = {
   supabaseUrl: string
-  supabaseAnonKey: string
+  supabasePublishableKey: string
 }
 
 export type WebRuntimeConfig = {
   theme: string
   graphqlEndpoint: string
   supabase: SupabaseRuntimeConfig | null
-  authBypassForE2E: boolean
 }
 
 function getRuntime() {
@@ -116,22 +115,18 @@ export function getSupabaseRuntimeConfig(): SupabaseRuntimeConfig | null {
   const supabaseUrl =
     runtime.__SUPABASE_URL__ ?? getImportMetaEnvValue('VITE_SUPABASE_URL')
 
-  const supabaseAnonKey =
-    runtime.__SUPABASE_ANON_KEY__ ??
-    getImportMetaEnvValue('VITE_SUPABASE_ANON_KEY')
+  const supabasePublishableKey =
+    runtime.__SUPABASE_PUBLISHABLE_KEY__ ??
+    getImportMetaEnvValue('VITE_SUPABASE_PUBLISHABLE_KEY')
 
-  if (!supabaseUrl || !supabaseAnonKey) {
+  if (!supabaseUrl || !supabasePublishableKey) {
     return null
   }
 
   return {
     supabaseUrl,
-    supabaseAnonKey,
+    supabasePublishableKey,
   }
-}
-
-export function isWebAuthBypassEnabled() {
-  return getImportMetaEnvValue('VITE_AUTH_BYPASS_FOR_E2E') === 'true'
 }
 
 export function getWebRuntimeConfig(): WebRuntimeConfig {
@@ -142,7 +137,6 @@ export function getWebRuntimeConfig(): WebRuntimeConfig {
       'dark',
     graphqlEndpoint: getRuntimeEndpoint(),
     supabase: getSupabaseRuntimeConfig(),
-    authBypassForE2E: isWebAuthBypassEnabled(),
   }
 
   assertWebRuntimeConfig(config)

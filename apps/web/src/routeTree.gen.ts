@@ -11,8 +11,11 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as PublishRouteImport } from './routes/publish'
 import { Route as LearnRouteImport } from './routes/learn'
+import { Route as CoursesRouteImport } from './routes/courses'
+import { Route as MyCoursesRouteImport } from './routes/my-courses'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as CoursesSlugRouteImport } from './routes/courses.$slug'
 import { Route as PublishCourseIdRouteImport } from './routes/publish.$courseId'
 import { Route as CoursesCourseIdLessonsLessonIdRouteImport } from './routes/courses.$courseId.lessons.$lessonId'
 
@@ -24,6 +27,16 @@ const PublishRoute = PublishRouteImport.update({
 const LearnRoute = LearnRouteImport.update({
   id: '/learn',
   path: '/learn',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CoursesRoute = CoursesRouteImport.update({
+  id: '/courses',
+  path: '/courses',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MyCoursesRoute = MyCoursesRouteImport.update({
+  id: '/my-courses',
+  path: '/my-courses',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -41,6 +54,11 @@ const PublishCourseIdRoute = PublishCourseIdRouteImport.update({
   path: '/$courseId',
   getParentRoute: () => PublishRoute,
 } as any)
+const CoursesSlugRoute = CoursesSlugRouteImport.update({
+  id: '/$slug',
+  path: '/$slug',
+  getParentRoute: () => CoursesRoute,
+} as any)
 const CoursesCourseIdLessonsLessonIdRoute =
   CoursesCourseIdLessonsLessonIdRouteImport.update({
     id: '/courses/$courseId/lessons/$lessonId',
@@ -51,6 +69,9 @@ const CoursesCourseIdLessonsLessonIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/courses': typeof CoursesRouteWithChildren
+  '/courses/$slug': typeof CoursesSlugRoute
+  '/my-courses': typeof MyCoursesRoute
   '/learn': typeof LearnRoute
   '/publish': typeof PublishRouteWithChildren
   '/publish/$courseId': typeof PublishCourseIdRoute
@@ -59,6 +80,9 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/courses': typeof CoursesRouteWithChildren
+  '/courses/$slug': typeof CoursesSlugRoute
+  '/my-courses': typeof MyCoursesRoute
   '/learn': typeof LearnRoute
   '/publish': typeof PublishRouteWithChildren
   '/publish/$courseId': typeof PublishCourseIdRoute
@@ -68,6 +92,9 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/courses': typeof CoursesRouteWithChildren
+  '/courses/$slug': typeof CoursesSlugRoute
+  '/my-courses': typeof MyCoursesRoute
   '/learn': typeof LearnRoute
   '/publish': typeof PublishRouteWithChildren
   '/publish/$courseId': typeof PublishCourseIdRoute
@@ -78,6 +105,9 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/courses'
+    | '/courses/$slug'
+    | '/my-courses'
     | '/learn'
     | '/publish'
     | '/publish/$courseId'
@@ -86,6 +116,9 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/courses'
+    | '/courses/$slug'
+    | '/my-courses'
     | '/learn'
     | '/publish'
     | '/publish/$courseId'
@@ -94,6 +127,9 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/auth'
+    | '/courses'
+    | '/courses/$slug'
+    | '/my-courses'
     | '/learn'
     | '/publish'
     | '/publish/$courseId'
@@ -103,6 +139,8 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRoute
+  CoursesRoute: typeof CoursesRouteWithChildren
+  MyCoursesRoute: typeof MyCoursesRoute
   LearnRoute: typeof LearnRoute
   PublishRoute: typeof PublishRouteWithChildren
   CoursesCourseIdLessonsLessonIdRoute: typeof CoursesCourseIdLessonsLessonIdRoute
@@ -129,6 +167,27 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/courses': {
+      id: '/courses'
+      path: '/courses'
+      fullPath: '/courses'
+      preLoaderRoute: typeof CoursesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/courses/$slug': {
+      id: '/courses/$slug'
+      path: '/$slug'
+      fullPath: '/courses/$slug'
+      preLoaderRoute: typeof CoursesSlugRouteImport
+      parentRoute: typeof CoursesRoute
+    }
+    '/my-courses': {
+      id: '/my-courses'
+      path: '/my-courses'
+      fullPath: '/my-courses'
+      preLoaderRoute: typeof MyCoursesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -159,16 +218,28 @@ interface PublishRouteChildren {
   PublishCourseIdRoute: typeof PublishCourseIdRoute
 }
 
+interface CoursesRouteChildren {
+  CoursesSlugRoute: typeof CoursesSlugRoute
+}
+
 const PublishRouteChildren: PublishRouteChildren = {
   PublishCourseIdRoute: PublishCourseIdRoute,
 }
 
+const CoursesRouteChildren: CoursesRouteChildren = {
+  CoursesSlugRoute: CoursesSlugRoute,
+}
+
 const PublishRouteWithChildren =
   PublishRoute._addFileChildren(PublishRouteChildren)
+const CoursesRouteWithChildren =
+  CoursesRoute._addFileChildren(CoursesRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
+  CoursesRoute: CoursesRouteWithChildren,
+  MyCoursesRoute: MyCoursesRoute,
   LearnRoute: LearnRoute,
   PublishRoute: PublishRouteWithChildren,
   CoursesCourseIdLessonsLessonIdRoute: CoursesCourseIdLessonsLessonIdRoute,

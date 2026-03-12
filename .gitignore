@@ -17,6 +17,7 @@ shared/*/node_modules
 # Generated app runtime caches
 apps/web/.nitro/
 apps/web/.tanstack/
+apps/*/.wrangler/
 
 # Local planning artifacts
 change-request/

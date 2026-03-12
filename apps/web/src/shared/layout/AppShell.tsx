@@ -14,6 +14,8 @@ export function AppShell({ children }: AppShellProps) {
   const auth = useAuth()
   const isPublish = location.pathname.startsWith('/publish')
   const isLearn = location.pathname.startsWith('/learn')
+  const isCatalog = location.pathname.startsWith('/courses')
+  const isMyCourses = location.pathname.startsWith('/my-courses')
   const isAuthRoute = location.pathname.startsWith('/auth')
 
   return (
@@ -36,6 +38,18 @@ export function AppShell({ children }: AppShellProps) {
           <strong>{t('app.title')}</strong>
           <div style={{ display: 'flex', gap: tokenVars.spacing.md }}>
             <nav style={{ display: 'flex', gap: tokenVars.spacing.md }}>
+              <Link
+                to="/courses"
+                className={isCatalog ? 'nav-link active' : 'nav-link'}
+              >
+                {t('nav.courses')}
+              </Link>
+              <Link
+                to="/my-courses"
+                className={isMyCourses ? 'nav-link active' : 'nav-link'}
+              >
+                {t('nav.myCourses')}
+              </Link>
               <Link
                 to="/learn"
                 className={isLearn ? 'nav-link active' : 'nav-link'}

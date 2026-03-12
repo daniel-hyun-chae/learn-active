@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import net from 'node:net'
 import { fileURLToPath } from 'node:url'
@@ -78,6 +78,105 @@ function runAndWait(command, args, options = {}) {
       reject(new Error(`${command} ${args.join(' ')} exited with ${code}`))
     })
   })
+}
+
+function parseEnvAssignments(rawText) {
+  const values = {}
+  for (const line of rawText.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!trimmed || !trimmed.includes('=')) {
+      continue
+    }
+
+    const separatorIndex = trimmed.indexOf('=')
+    const key = trimmed.slice(0, separatorIndex).trim()
+    if (!/^[A-Z0-9_]+$/.test(key)) {
+      continue
+    }
+
+    let value = trimmed.slice(separatorIndex + 1).trim()
+    if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+      value = value.slice(1, -1)
+    }
+
+    values[key] = value
+  }
+
+  return values
+}
+
+function pickConfiguredValue(...candidates) {
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string') {
+      continue
+    }
+    const value = candidate.trim()
+    if (value) {
+      return value
+    }
+  }
+  return ''
+}
+
+function resolveSupabaseWebRuntime() {
+  const configuredUrl = pickConfiguredValue(
+    process.env.VITE_SUPABASE_URL,
+    process.env.SUPABASE_URL,
+  )
+  const configuredPublishableKey = pickConfiguredValue(
+    process.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+  )
+
+  if (configuredUrl && configuredPublishableKey) {
+    return {
+      source: 'environment',
+      url: configuredUrl,
+      publishableKey: configuredPublishableKey,
+    }
+  }
+
+  const status = spawnSync(
+    'npx',
+    ['-y', 'supabase@latest', 'status', '-o', 'env'],
+    {
+      encoding: 'utf8',
+      timeout: 30000,
+      maxBuffer: 1024 * 1024,
+      shell: process.platform === 'win32',
+      env: { ...process.env },
+    },
+  )
+
+  if (status.status !== 0) {
+    const details = `${status.stdout ?? ''}${status.stderr ?? ''}`.trim()
+    const reason = details ? ` (${details})` : ''
+    console.warn(
+      `[dev-stack] Could not resolve local Supabase runtime settings from supabase status${reason}`,
+    )
+    return null
+  }
+
+  const parsed = parseEnvAssignments(
+    `${status.stdout ?? ''}\n${status.stderr ?? ''}`,
+  )
+  const derivedUrl = pickConfiguredValue(configuredUrl, parsed.API_URL)
+  const derivedPublishableKey = pickConfiguredValue(
+    configuredPublishableKey,
+    parsed.ANON_KEY,
+  )
+
+  if (!derivedUrl || !derivedPublishableKey) {
+    console.warn(
+      '[dev-stack] Local Supabase runtime settings are incomplete; auth UI may remain unconfigured',
+    )
+    return null
+  }
+
+  return {
+    source: 'supabase status',
+    url: derivedUrl,
+    publishableKey: derivedPublishableKey,
+  }
 }
 
 async function canListen(port, host) {
@@ -242,6 +341,17 @@ await runAndWait(process.execPath, [routeTreeScript], {
 const effectiveDatabaseUrl = normalizeDatabaseUrlForDevcontainer(
   process.env.DATABASE_URL,
 )
+const supabaseWebRuntime = resolveSupabaseWebRuntime()
+const apiSupabaseUrl = pickConfiguredValue(
+  process.env.SUPABASE_URL,
+  supabaseWebRuntime?.url,
+)
+
+if (supabaseWebRuntime) {
+  console.log(
+    `[dev-stack] Supabase auth runtime source: ${supabaseWebRuntime.source}`,
+  )
+}
 
 const apiProcess = startMonitoredProcess(
   'api',
@@ -254,10 +364,11 @@ const apiProcess = startMonitoredProcess(
     'dev',
     '--config',
     'wrangler.jsonc',
+    '--ip',
+    '0.0.0.0',
     '--port',
     String(apiPort),
-    '--var',
-    `API_AUTH_BYPASS_FOR_E2E:${process.env.API_AUTH_BYPASS_FOR_E2E ?? 'true'}`,
+    ...(apiSupabaseUrl ? ['--var', `SUPABASE_URL:${apiSupabaseUrl}`] : []),
   ],
   {
     cwd: apiAppDir,
@@ -284,6 +395,16 @@ const webProcess = startMonitoredProcess(
       PORT: String(webPort),
       GRAPHQL_ENDPOINT: apiEndpoint,
       VITE_GRAPHQL_ENDPOINT: apiEndpoint,
+      ...(supabaseWebRuntime
+        ? {
+            SUPABASE_URL: process.env.SUPABASE_URL ?? supabaseWebRuntime.url,
+            VITE_SUPABASE_URL:
+              process.env.VITE_SUPABASE_URL ?? supabaseWebRuntime.url,
+            VITE_SUPABASE_PUBLISHABLE_KEY:
+              process.env.VITE_SUPABASE_PUBLISHABLE_KEY ??
+              supabaseWebRuntime.publishableKey,
+          }
+        : {}),
     },
   },
 )

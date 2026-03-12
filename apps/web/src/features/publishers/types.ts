@@ -1,8 +1,41 @@
 export type CourseDraft = {
   id?: string
+  versionId?: string
+  version?: number
+  status?: 'draft' | 'published' | 'archived'
   title: string
   description: string
+  changeNote?: string | null
+  createdAt?: string
+  createdBy?: string
+  publishedAt?: string | null
+  archivedAt?: string | null
   modules: ModuleDraft[]
+}
+
+export type CourseVersionHistoryEntry = {
+  versionId: string
+  version: number
+  status: 'draft' | 'published' | 'archived'
+  title: string
+  changeNote?: string | null
+  createdAt: string
+  createdBy: string
+  publishedAt?: string | null
+  archivedAt?: string | null
+}
+
+export type CourseVersionDiff = {
+  courseId: string
+  fromVersionId: string
+  toVersionId: string
+  fromVersion: number
+  toVersion: number
+  titleChanged: boolean
+  descriptionChanged: boolean
+  addedFields: string[]
+  removedFields: string[]
+  changedFields: string[]
 }
 
 export type ModuleDraft = {

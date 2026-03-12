@@ -83,7 +83,7 @@ export const Route = createFileRoute('/courses/$courseId/lessons/$lessonId')({
     }
 
     const data = await fetchGraphQL<{
-      course: {
+      learnerCourse: {
         modules: Array<{
           id: string
           title: string
@@ -93,7 +93,7 @@ export const Route = createFileRoute('/courses/$courseId/lessons/$lessonId')({
       } | null
     }>(
       `query CourseLesson($id: String!) {
-        course(id: $id) {
+        learnerCourse(id: $id) {
           modules {
             id
             title
@@ -151,7 +151,7 @@ export const Route = createFileRoute('/courses/$courseId/lessons/$lessonId')({
       { id: courseId },
     )
 
-    const sourceModules = data.course?.modules ?? []
+    const sourceModules = data.learnerCourse?.modules ?? []
 
     const modules = sourceModules
       .map((module) => ({

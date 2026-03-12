@@ -1,39 +1,21 @@
-# Architecture
+# Architecture Index
 
-This directory contains core architecture documentation. Update this documentation whenever core architecture changes.
+This directory is the technical entry point for humans and AI agents who need to understand how the system works across local development, staging, and production.
 
-## Structure
-- Keep a high-level overview here and add additional files for detailed diagrams or component docs.
-- Link to related decision logs and evaluations when applicable.
+## Start here
 
-## Template
-Use this template for the main overview and for any new architecture docs:
+- System architecture overview: `architecture/overview.md`
+- CI/CD, staging/production deploy and rollback runbook: `architecture/ci-cd.md`
+- Environment variable and secret scope: `architecture/environment-variables.md`
 
-```
-# <Document Title>
+## Supporting references
 
-## Overview
-<What this architecture covers and why it exists>
+- Implementation decisions (why choices were made): `decision-log/`
+- Evaluation criteria and acceptance contracts: `evaluations/`
+- Human local quickstart (devcontainer-first): `README.md`
 
-## System Context
-<Actors, external systems, and trust boundaries>
+## Maintenance expectations
 
-## Components
-- <Component name>: <responsibility and key interfaces>
-
-## Data Flow
-- <Key flow 1>
-- <Key flow 2>
-
-## Deployment and Operations
-<Runtime, hosting, scaling, and observability notes>
-
-## Cross-Cutting Concerns
-- Security:
-- Accessibility (if frontend):
-- Localization:
-
-## References
-- Decision logs: `decision-log/`
-- Evaluations: `evaluations/`
-```
+- Update architecture docs when runtime topology, deployment flow, or platform boundaries change.
+- Add or update decision log entries when implementation-affecting decisions are introduced.
+- Keep README concise and human-first; keep deeper operational detail in this directory.

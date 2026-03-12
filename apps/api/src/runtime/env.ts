@@ -10,7 +10,6 @@ export type ApiRuntimeEnv = {
   databaseUrl: string | null
   supabaseUrl: string | null
   supabaseServiceRoleKey: string | null
-  apiAuthBypassForE2E: boolean
 }
 
 export type WorkerBindings = {
@@ -18,17 +17,12 @@ export type WorkerBindings = {
   DATABASE_URL?: string
   SUPABASE_URL?: string
   SUPABASE_SERVICE_ROLE_KEY?: string
-  API_AUTH_BYPASS_FOR_E2E?: string
   PORT?: string
 }
 
 function normalizeOptional(value: string | undefined) {
   const next = value?.trim()
   return next ? next : null
-}
-
-function toBoolean(value: string | undefined) {
-  return value === '1' || value === 'true'
 }
 
 function resolveStage(value: string | undefined): RuntimeStage {
@@ -99,7 +93,6 @@ export function loadNodeRuntimeEnv(
     databaseUrl: normalizeOptional(source.DATABASE_URL),
     supabaseUrl: normalizeOptional(source.SUPABASE_URL),
     supabaseServiceRoleKey: normalizeOptional(source.SUPABASE_SERVICE_ROLE_KEY),
-    apiAuthBypassForE2E: toBoolean(source.API_AUTH_BYPASS_FOR_E2E),
   }
 
   assertRuntimeEnv(runtimeEnv)
@@ -118,7 +111,6 @@ export function loadWorkerRuntimeEnv(bindings: WorkerBindings): ApiRuntimeEnv {
     supabaseServiceRoleKey: normalizeOptional(
       bindings.SUPABASE_SERVICE_ROLE_KEY,
     ),
-    apiAuthBypassForE2E: toBoolean(bindings.API_AUTH_BYPASS_FOR_E2E),
   }
 
   assertRuntimeEnv(runtimeEnv)

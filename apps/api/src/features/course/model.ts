@@ -1,132 +1,160 @@
 import type { CourseInput } from './inputs.js'
 import type { Course } from './types.js'
 
-export type CourseRecord = {
-  id: string
-  title: string
-  description: string
-  content: { modules: Course['modules'] }
-}
-
 export type IdGenerator = () => string
 
-function normalizeStoredModules(modules: Course['modules']): Course['modules'] {
-  return modules.map((module) => ({
-    ...module,
-    lessons: module.lessons.map((lesson) => ({
-      ...lesson,
-      contents: lesson.contents ?? [],
-      contentPages: lesson.contentPages ?? [],
-      exercises: lesson.exercises ?? [],
-    })),
-  }))
+export type CourseContent = {
+  modules: Course['modules']
 }
 
-function ensureId(generateId: IdGenerator, value?: string) {
-  return value ?? generateId()
+export type PublisherCourseRecord = {
+  courseId: string
+  slug: string
+  ownerId: string
+  versionId: string
+  version: number
+  status: 'draft' | 'published' | 'archived'
+  title: string
+  description: string
+  content: CourseContent
+  changeNote?: string | null
+  createdAt: string
+  createdBy: string
+  publishedAt: string | null
+  archivedAt?: string | null
 }
 
-export function mapCourseRecord(record: CourseRecord): Course {
-  return {
-    id: record.id,
-    title: record.title,
-    description: record.description,
-    modules: normalizeStoredModules(record.content?.modules ?? []),
-  }
+export type PublicCourseRecord = {
+  id: string
+  slug: string
+  title: string
+  description: string
+  ownerDisplayName?: string
+}
+
+export type EnrollmentRecord = {
+  id: string
+  courseId: string
+  status: string
+  enrolledAt: string
+}
+
+export type CourseVersionHistoryRecord = {
+  versionId: string
+  version: number
+  status: 'draft' | 'published' | 'archived'
+  title: string
+  changeNote?: string | null
+  createdAt: string
+  createdBy: string
+  publishedAt: string | null
+  archivedAt: string | null
+}
+
+export type CourseVersionDiffRecord = {
+  courseId: string
+  fromVersionId: string
+  toVersionId: string
+  fromVersion: number
+  toVersion: number
+  titleChanged: boolean
+  descriptionChanged: boolean
+  addedFields: string[]
+  removedFields: string[]
+  changedFields: string[]
+}
+
+function ensureId(generateId: IdGenerator, value?: string): string {
+  return value && value.length > 0 ? value : generateId()
 }
 
 export function normalizeCourseInput(
   input: CourseInput,
   generateId: IdGenerator,
-): CourseRecord {
-  const modules = input.modules.map((module, moduleIndex) => {
-    const moduleId = ensureId(generateId, module.id)
-    return {
-      id: moduleId,
-      title: module.title,
-      order: module.order ?? moduleIndex + 1,
-      lessons: module.lessons.map((lesson, lessonIndex) => {
-        const lessonId = ensureId(generateId, lesson.id)
-        return {
-          id: lessonId,
-          title: lesson.title,
-          order: lesson.order ?? lessonIndex + 1,
-          contents: lesson.contents.map((content, contentIndex) => ({
-            id: ensureId(
-              generateId,
-              content.id ?? `content-${lessonId}-${contentIndex}`,
-            ),
-            type: content.type,
-            text: content.text,
-            imageUrl: content.imageUrl,
-            imageAlt: content.imageAlt,
-            lexicalJson: content.lexicalJson,
+): { id: string; title: string; description: string; content: CourseContent } {
+  const modules = (input.modules ?? []).map((moduleInput, moduleIndex) => ({
+    id: ensureId(generateId, moduleInput.id),
+    title: moduleInput.title,
+    order: moduleInput.order ?? moduleIndex + 1,
+    lessons: (moduleInput.lessons ?? []).map((lessonInput, lessonIndex) => ({
+      id: ensureId(generateId, lessonInput.id),
+      title: lessonInput.title,
+      order: lessonInput.order ?? lessonIndex + 1,
+      contents: (lessonInput.contents ?? []).map((contentInput) => ({
+        id: ensureId(generateId, contentInput.id),
+        type: contentInput.type,
+        text: contentInput.text,
+        html: contentInput.html,
+        imageUrl: contentInput.imageUrl,
+        imageAlt: contentInput.imageAlt,
+        lexicalJson: contentInput.lexicalJson,
+      })),
+      contentPages: (lessonInput.contentPages ?? []).map(
+        (pageInput, pageIndex) => ({
+          id: ensureId(generateId, pageInput.id),
+          title: pageInput.title,
+          order: pageInput.order ?? pageIndex + 1,
+          contents: (pageInput.contents ?? []).map((contentInput) => ({
+            id: ensureId(generateId, contentInput.id),
+            type: contentInput.type,
+            text: contentInput.text,
+            html: contentInput.html,
+            imageUrl: contentInput.imageUrl,
+            imageAlt: contentInput.imageAlt,
+            lexicalJson: contentInput.lexicalJson,
           })),
-          contentPages: (lesson.contentPages ?? []).map((page, pageIndex) => {
-            const pageId = ensureId(
-              generateId,
-              page.id ?? `content-page-${lessonId}-${pageIndex}`,
-            )
-
-            return {
-              id: pageId,
-              title: page.title,
-              order: page.order ?? pageIndex + 1,
-              contents: page.contents.map((content, contentIndex) => ({
-                id: ensureId(
-                  generateId,
-                  content.id ?? `content-${pageId}-${contentIndex}`,
-                ),
-                type: content.type,
-                text: content.text,
-                imageUrl: content.imageUrl,
-                imageAlt: content.imageAlt,
-                lexicalJson: content.lexicalJson,
-              })),
-            }
-          }),
-          exercises: lesson.exercises.map((exercise, exerciseIndex) => ({
-            id: ensureId(
-              generateId,
-              exercise.id ?? `exercise-${lessonId}-${exerciseIndex}`,
-            ),
-            type: exercise.type,
-            title: exercise.title,
-            instructions: exercise.instructions,
-            steps: exercise.steps.map((step, stepIndex) => ({
-              id: ensureId(
-                generateId,
-                step.id ?? `step-${lessonId}-${stepIndex}`,
-              ),
-              order: step.order ?? stepIndex + 1,
-              prompt: step.prompt,
-              threadId: step.threadId,
-              threadTitle: step.threadTitle,
-              segments: step.segments.map((segment) => ({
-                type: segment.type,
-                text: segment.text,
-                blankId: segment.blankId,
-              })),
-              blanks: step.blanks.map((blank, blankIndex) => ({
-                id: ensureId(
-                  generateId,
-                  blank.id ?? `blank-${lessonId}-${stepIndex}-${blankIndex}`,
-                ),
-                correct: blank.correct,
-                variant: blank.variant,
-                options: blank.options,
-              })),
-            })),
+        }),
+      ),
+      exercises: (lessonInput.exercises ?? []).map((exerciseInput) => ({
+        id: ensureId(generateId, exerciseInput.id),
+        type: exerciseInput.type,
+        title: exerciseInput.title,
+        instructions: exerciseInput.instructions,
+        steps: (exerciseInput.steps ?? []).map((stepInput, stepIndex) => ({
+          id: ensureId(generateId, stepInput.id),
+          order: stepInput.order ?? stepIndex + 1,
+          prompt: stepInput.prompt,
+          threadId: stepInput.threadId,
+          threadTitle: stepInput.threadTitle,
+          segments: (stepInput.segments ?? []).map((segmentInput) => ({
+            type: segmentInput.type,
+            text: segmentInput.text,
+            blankId: segmentInput.blankId,
           })),
-        }
-      }),
-    }
-  })
+          blanks: (stepInput.blanks ?? []).map((blankInput) => ({
+            id: ensureId(generateId, blankInput.id),
+            correct: blankInput.correct,
+            variant: blankInput.variant,
+            options: blankInput.options,
+          })),
+        })),
+      })),
+    })),
+  }))
 
   return {
     id: input.id ?? generateId(),
     title: input.title,
     description: input.description,
     content: { modules },
+  }
+}
+
+export function mapPublisherCourseToCourse(
+  record: PublisherCourseRecord,
+): Course {
+  return {
+    id: record.courseId,
+    versionId: record.versionId,
+    version: record.version,
+    status: record.status,
+    title: record.title,
+    description: record.description,
+    changeNote: record.changeNote ?? null,
+    createdAt: record.createdAt,
+    createdBy: record.createdBy,
+    publishedAt: record.publishedAt,
+    archivedAt: record.archivedAt ?? null,
+    modules: record.content.modules,
   }
 }

@@ -16,7 +16,7 @@ Criteria:
 
 - Supabase auth config defines local web redirect/callback URLs and mobile deep-link callback URLs.
 - Supabase Google provider configuration is present using environment-variable placeholders only.
-- Environment templates document Supabase URL/anon key variables for web and mobile runtimes.
+- Environment templates document Supabase URL/publishable key variables for web and mobile runtimes.
 - No committed repository values contain real production Supabase secrets.
 
 ## EVAL-AUTH-LOCAL-003: App-level identity synchronization
@@ -37,3 +37,13 @@ Criteria:
 - Protected course operations reject requests with missing, invalid, or expired tokens.
 - Authenticated requests expose `request.user.id` in request context for downstream operations.
 - Reusable auth guard logic is applied consistently to protected course operations.
+
+## EVAL-AUTH-LOCAL-005: Local magic-link usability and Mailpit delivery
+
+Goal: Ensure local development startup exposes a usable magic-link flow that delivers email to local Mailpit.
+Criteria:
+
+- Local startup (`pnpm db:up` then `pnpm dev`) provides runtime Supabase auth configuration for the web auth route.
+- The `/auth` magic-link send action is enabled when local auth configuration is present.
+- Submitting a unique magic-link email in local runtime shows a successful send state in the UI.
+- A corresponding magic-link email is observable in local Mailpit (`http://127.0.0.1:54324`) during e2e verification.

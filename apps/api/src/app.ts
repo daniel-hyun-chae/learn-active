@@ -11,5 +11,10 @@ export async function createApiApp(services: RuntimeServices) {
     schema,
     context: createContextFactory(services),
     graphqlEndpoint: services.env.graphqlEndpoint,
+    cors: {
+      origin: '*',
+      methods: ['GET', 'POST', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
+    },
   })
 }

@@ -14,13 +14,17 @@ export function getWebSupabaseClient() {
     return cachedClient
   }
 
-  cachedClient = createClient(config.supabaseUrl, config.supabaseAnonKey, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
+  cachedClient = createClient(
+    config.supabaseUrl,
+    config.supabasePublishableKey,
+    {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
     },
-  })
+  )
 
   return cachedClient
 }

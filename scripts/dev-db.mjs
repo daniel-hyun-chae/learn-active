@@ -60,6 +60,39 @@ function runSupabase(args) {
   run('npx', ['-y', 'supabase@latest', ...args])
 }
 
+async function waitForHttpOk(url, timeoutMs = 60000, intervalMs = 1000) {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const response = await fetch(url)
+      if (response.ok) {
+        return
+      }
+    } catch {
+      // retry until timeout
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
+  throw new Error(`Timed out waiting for ${url}`)
+}
+
+async function ensureAuthHealthyWithSingleRetry(startArgs) {
+  const authHealthUrl = 'http://127.0.0.1:54321/auth/v1/health'
+
+  try {
+    await waitForHttpOk(authHealthUrl, 60000)
+    return
+  } catch {
+    console.warn(
+      '[db] Supabase auth health check did not pass after startup; retrying stack restart once...',
+    )
+  }
+
+  runSupabase(['stop'])
+  runSupabase(startArgs)
+  await waitForHttpOk(authHealthUrl, 60000)
+}
+
 function showHelp() {
   console.log('Usage: node scripts/dev-db.mjs <command> [--yes]')
   console.log('')
@@ -95,6 +128,7 @@ switch (command) {
       )
     }
     runSupabase(startArgs)
+    await ensureAuthHealthyWithSingleRetry(startArgs)
     console.log('[db] Supabase local stack is up.')
     break
   }
@@ -111,14 +145,14 @@ switch (command) {
   }
   case 'push': {
     console.log('[db] Applying local Supabase migrations...')
-    runSupabase(['db', 'push', '--local'])
+    runSupabase(['db', 'push', '--local', '--yes'])
     console.log('[db] Local migration push complete.')
     break
   }
   case 'reset': {
     if (!force) {
       console.error('[db] Refusing to reset without --yes')
-      console.error('[db] Run: pnpm db:reset -- --yes')
+      console.error('[db] Run: node scripts/dev-db.mjs reset --yes')
       process.exit(1)
     }
     console.log('[db] Resetting local Supabase database...')

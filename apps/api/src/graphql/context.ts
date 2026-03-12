@@ -29,15 +29,9 @@ export function createContextFactory(services: RuntimeServices) {
       try {
         user = await verifyAccessToken(bearerToken, {
           supabaseUrl: env.supabaseUrl,
-          apiAuthBypassForE2E: env.apiAuthBypassForE2E,
         })
       } catch (error) {
         authError = error instanceof Error ? error.message : String(error)
-      }
-    } else if (env.apiAuthBypassForE2E) {
-      user = {
-        id: 'e2e-user',
-        email: 'e2e@example.local',
       }
     }
 
