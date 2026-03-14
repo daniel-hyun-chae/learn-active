@@ -114,6 +114,10 @@ export function handleStripeWebhookRequest(
   return handleStripeWebhook(request, services)
 }
 
+function isRequestObject(value: string | URL | Request): value is Request {
+  return value instanceof Request
+}
+
 export async function createApiApp(services: RuntimeServices) {
   const schema = await createSchema()
 
@@ -128,18 +132,25 @@ export async function createApiApp(services: RuntimeServices) {
     },
   })
 
-  const originalFetch = yoga.fetch.bind(yoga) as (
-    ...args: any[]
-  ) => Promise<Response>
-  ;(yoga as any).fetch = async (...args: any[]) => {
-    const request = args[0]
+  const originalFetch = yoga.fetch.bind(yoga)
+  const wrappedFetch = ((...args: unknown[]) => {
+    const request = args[0] as string | URL | Request
 
-    if (isStripeWebhookRequest(request, services)) {
-      return handleStripeWebhookRequest(request as Request, services)
+    if (isRequestObject(request) && isStripeWebhookRequest(request, services)) {
+      return handleStripeWebhookRequest(request, services)
     }
 
-    return originalFetch(...args)
-  }
+    if (request instanceof URL) {
+      return originalFetch(request, ...(args.slice(1) as []))
+    }
+
+    if (typeof request === 'string') {
+      return originalFetch(request, ...(args.slice(1) as []))
+    }
+
+    return originalFetch(request as Request, ...(args.slice(1) as []))
+  }) as typeof yoga.fetch
+  yoga.fetch = wrappedFetch
 
   return yoga
 }
