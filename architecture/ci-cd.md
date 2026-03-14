@@ -119,12 +119,30 @@ Validation checks:
 
 If validation fails, deploy is blocked.
 
+## Hosted API post-deploy verification
+
+Both API deploy jobs verify the deployed Worker endpoint immediately after deploy.
+
+- Staging runs:
+  - `node scripts/verify-hosted-api-health.mjs --url "$API_URL_STAGING" --env staging`
+- Production runs:
+  - `node scripts/verify-hosted-api-health.mjs --url "$API_URL_PROD" --env production`
+
+Verification behavior:
+
+- Sends a hosted `OPTIONS` preflight request to the deployed GraphQL endpoint.
+- Fails the workflow if the Worker returns a non-2xx response.
+- Fails the workflow if the response is missing `Access-Control-Allow-Origin`.
+
+This keeps hosted runtime fail-fast behavior in place while making missing or dropped Worker bindings visible in CI immediately after deployment rather than only through later browser/runtime failures.
+
 ### Stripe in hosted environments
 
 - Local development can use Stripe CLI webhook forwarding.
 - Staging and production do not depend on a long-running Stripe CLI session.
 - API deploy jobs sync `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` into the target Worker as Cloudflare secrets before deploy.
 - API deploy jobs pass `STRIPE_PUBLISHABLE_KEY` as a Worker variable during deploy.
+- API deploy jobs use `--keep-vars` so redeploys do not silently drop required hosted Worker vars.
 - Use Stripe test-mode credentials for staging unless and until a live-mode production rollout is intentionally configured.
 
 ## Built web endpoint verification
