@@ -101,7 +101,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           SUPABASE_URL: ${{ secrets.SUPABASE_PROJECT_URL_PROD }}
           STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY_PROD }}
-        run: pnpm --filter @app/api deploy:worker:prod -- --var "SUPABASE_URL:${SUPABASE_URL}" --var "STRIPE_PUBLISHABLE_KEY:${STRIPE_PUBLISHABLE_KEY}"
+        run: pnpm --filter @app/api deploy:worker:prod
 
       - name: Verify production API health after deploy
         env:

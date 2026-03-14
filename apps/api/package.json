@@ -9,8 +9,8 @@
     "build": "pnpm exec tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
     "deploy:worker": "pnpm exec wrangler deploy --config wrangler.jsonc",
-    "deploy:worker:staging": "pnpm exec wrangler deploy --config wrangler.jsonc --name course-api-staging --var APP_ENV:staging --keep-vars",
-    "deploy:worker:prod": "pnpm exec wrangler deploy --config wrangler.jsonc --name course-api --var APP_ENV:production --keep-vars",
+    "deploy:worker:staging": "node ../../scripts/deploy-api-worker.mjs --env staging --name course-api-staging",
+    "deploy:worker:prod": "node ../../scripts/deploy-api-worker.mjs --env production --name course-api",
     "lint": "pnpm exec eslint src --max-warnings 0"
   },
   "dependencies": {
