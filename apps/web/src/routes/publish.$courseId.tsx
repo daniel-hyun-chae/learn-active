@@ -27,6 +27,10 @@ export const Route = createFileRoute('/publish/$courseId')({
           status
           title
           description
+          priceCents
+          currency
+          stripePriceId
+          isPaid
           changeNote
           createdAt
           createdBy

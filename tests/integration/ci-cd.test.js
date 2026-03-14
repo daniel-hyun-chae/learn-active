@@ -49,7 +49,13 @@ test('staging deployment workflow wiring @eval(EVAL-PLATFORM-CICD-002,EVAL-PLATF
   assert.ok(workflow.includes('SUPABASE_PUBLISHABLE_KEY_STAGING'))
   assert.ok(workflow.includes('API_URL_STAGING'))
   assert.ok(workflow.includes('WEB_URL_STAGING'))
+  assert.ok(workflow.includes('STRIPE_SECRET_KEY_STAGING'))
+  assert.ok(workflow.includes('STRIPE_PUBLISHABLE_KEY_STAGING'))
+  assert.ok(workflow.includes('STRIPE_WEBHOOK_SECRET_STAGING'))
   assert.ok(workflow.includes('pnpm validate:deploy-env -- --target staging'))
+  assert.ok(workflow.includes('Sync Stripe Worker secrets to staging'))
+  assert.ok(workflow.includes('wrangler secret put STRIPE_SECRET_KEY'))
+  assert.ok(workflow.includes('wrangler secret put STRIPE_WEBHOOK_SECRET'))
   assert.ok(workflow.includes('Verify built web GraphQL endpoint for staging'))
   assert.ok(workflow.includes('verify-web-build-endpoint.mjs'))
   assert.ok(workflow.includes('VITE_APP_ENV: staging'))
@@ -70,9 +76,15 @@ test('production deploy and rollback workflow wiring @eval(EVAL-PLATFORM-CICD-00
   assert.ok(workflow.includes('SUPABASE_PUBLISHABLE_KEY_PROD'))
   assert.ok(workflow.includes('API_URL_PROD'))
   assert.ok(workflow.includes('WEB_URL_PROD'))
+  assert.ok(workflow.includes('STRIPE_SECRET_KEY_PROD'))
+  assert.ok(workflow.includes('STRIPE_PUBLISHABLE_KEY_PROD'))
+  assert.ok(workflow.includes('STRIPE_WEBHOOK_SECRET_PROD'))
   assert.ok(
     workflow.includes('pnpm validate:deploy-env -- --target production'),
   )
+  assert.ok(workflow.includes('Sync Stripe Worker secrets to production'))
+  assert.ok(workflow.includes('wrangler secret put STRIPE_SECRET_KEY'))
+  assert.ok(workflow.includes('wrangler secret put STRIPE_WEBHOOK_SECRET'))
   assert.ok(
     workflow.includes('Verify built web GraphQL endpoint for production'),
   )
@@ -98,6 +110,9 @@ test('deployment env validation enforces hosted URL contract @eval(EVAL-PLATFORM
         SUPABASE_PUBLISHABLE_KEY_STAGING: 'staging-publishable-key',
         API_URL_STAGING: 'https://api-staging.example.com/graphql',
         WEB_URL_STAGING: 'https://staging.example.com',
+        STRIPE_SECRET_KEY_STAGING: 'sk_test_123',
+        STRIPE_PUBLISHABLE_KEY_STAGING: 'pk_test_123',
+        STRIPE_WEBHOOK_SECRET_STAGING: 'whsec_123',
       },
       encoding: 'utf8',
     },
@@ -115,6 +130,9 @@ test('deployment env validation enforces hosted URL contract @eval(EVAL-PLATFORM
           SUPABASE_PUBLISHABLE_KEY_STAGING: 'staging-publishable-key',
           API_URL_STAGING: 'https://api-staging.example.com/graphql',
           WEB_URL_STAGING: 'http://localhost:4100',
+          STRIPE_SECRET_KEY_STAGING: 'sk_test_123',
+          STRIPE_PUBLISHABLE_KEY_STAGING: 'pk_test_123',
+          STRIPE_WEBHOOK_SECRET_STAGING: 'whsec_123',
         },
         encoding: 'utf8',
       })
@@ -210,6 +228,9 @@ test('cicd documentation and readme linking @eval(EVAL-PLATFORM-CICD-005)', () =
   assert.ok(docs.includes('course-web'))
   assert.ok(docs.includes('CLOUDFLARE_API_TOKEN'))
   assert.ok(docs.includes('CLOUDFLARE_ACCOUNT_ID'))
+  assert.ok(docs.includes('STRIPE_SECRET_KEY_STAGING'))
+  assert.ok(docs.includes('STRIPE_PUBLISHABLE_KEY_STAGING'))
+  assert.ok(docs.includes('STRIPE_WEBHOOK_SECRET_STAGING'))
   assert.ok(docs.includes('validate:deploy-env'))
   assert.ok(docs.includes('localhost'))
   assert.ok(docs.includes('WEB_URL_STAGING/auth'))

@@ -86,3 +86,51 @@ test('dark mode infra @eval(EVAL-LEARNERS-COURSE-004)', () => {
   assert.ok(webRoot.includes('data-theme'))
   assert.ok(webRoot.includes('color-scheme'))
 })
+
+test('paid checkout web wiring @eval(EVAL-LEARNERS-COURSE-008,EVAL-LEARNERS-COURSE-010)', () => {
+  const catalogRoute = read('apps/web/src/routes/courses.tsx')
+  const detailRoute = read('apps/web/src/routes/courses.$slug.tsx')
+  const purchaseSuccessRoute = read('apps/web/src/routes/purchase.success.tsx')
+
+  assert.ok(catalogRoute.includes('createCourseCheckoutSession'))
+  assert.ok(catalogRoute.includes("channel: 'WEB'"))
+  assert.ok(catalogRoute.includes("t('catalog.buy')"))
+  assert.ok(catalogRoute.includes("t('catalog.free')"))
+
+  assert.ok(detailRoute.includes('createCourseCheckoutSession'))
+  assert.ok(detailRoute.includes("channel: 'WEB'"))
+  assert.ok(detailRoute.includes('window.location.assign'))
+
+  assert.ok(
+    purchaseSuccessRoute.includes("createFileRoute('/purchase/success')"),
+  )
+  assert.ok(purchaseSuccessRoute.includes('courseEnrollmentStatus'))
+  assert.ok(purchaseSuccessRoute.includes('getActiveWebSession'))
+  assert.ok(purchaseSuccessRoute.includes('setGraphQLAccessTokenProvider'))
+  assert.ok(purchaseSuccessRoute.includes("to: '/my-courses'"))
+})
+
+test('mobile purchase and deep-link wiring @eval(EVAL-LEARNERS-COURSE-008,EVAL-LEARNERS-COURSE-009,EVAL-LEARNERS-COURSE-010)', () => {
+  const mobileApp = read(
+    'apps/learners-mobile/src/features/learners/LearnerMobileApp.tsx',
+  )
+  const mobileHome = read(
+    'apps/learners-mobile/src/features/learners/home/LearnerHome.tsx',
+  )
+  const mobileAuthProvider = read(
+    'apps/learners-mobile/src/features/auth/MobileAuthProvider.tsx',
+  )
+
+  assert.ok(mobileApp.includes('publicCourses'))
+  assert.ok(mobileApp.includes('createCourseCheckoutSession'))
+  assert.ok(mobileApp.includes("channel: 'MOBILE'"))
+  assert.ok(mobileApp.includes('purchase/success'))
+  assert.ok(mobileApp.includes('courseEnrollmentStatus'))
+
+  assert.ok(mobileHome.includes('catalog.price'))
+  assert.ok(mobileHome.includes('mobile.learners.buy'))
+  assert.ok(mobileHome.includes('mobile.learners.enrollFree'))
+
+  assert.ok(mobileAuthProvider.includes('shouldProcessAuthRedirect'))
+  assert.ok(mobileAuthProvider.includes('auth/callback'))
+})

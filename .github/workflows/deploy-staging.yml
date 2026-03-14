@@ -96,14 +96,28 @@ jobs:
           SUPABASE_PUBLISHABLE_KEY_STAGING: ${{ secrets.SUPABASE_PUBLISHABLE_KEY_STAGING }}
           API_URL_STAGING: ${{ secrets.API_URL_STAGING }}
           WEB_URL_STAGING: ${{ secrets.WEB_URL_STAGING }}
+          STRIPE_SECRET_KEY_STAGING: ${{ secrets.STRIPE_SECRET_KEY_STAGING }}
+          STRIPE_PUBLISHABLE_KEY_STAGING: ${{ secrets.STRIPE_PUBLISHABLE_KEY_STAGING }}
+          STRIPE_WEBHOOK_SECRET_STAGING: ${{ secrets.STRIPE_WEBHOOK_SECRET_STAGING }}
         run: pnpm validate:deploy-env -- --target staging
+
+      - name: Sync Stripe Worker secrets to staging
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          STRIPE_SECRET_KEY_STAGING: ${{ secrets.STRIPE_SECRET_KEY_STAGING }}
+          STRIPE_WEBHOOK_SECRET_STAGING: ${{ secrets.STRIPE_WEBHOOK_SECRET_STAGING }}
+        run: |
+          printf '%s' "$STRIPE_SECRET_KEY_STAGING" | pnpm --filter @app/api exec wrangler secret put STRIPE_SECRET_KEY --name course-api-staging
+          printf '%s' "$STRIPE_WEBHOOK_SECRET_STAGING" | pnpm --filter @app/api exec wrangler secret put STRIPE_WEBHOOK_SECRET --name course-api-staging
 
       - name: Deploy API Worker to staging
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           SUPABASE_URL: ${{ secrets.SUPABASE_PROJECT_URL_STAGING }}
-        run: pnpm --filter @app/api deploy:worker:staging -- --var "SUPABASE_URL:${SUPABASE_URL}"
+          STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY_STAGING }}
+        run: pnpm --filter @app/api deploy:worker:staging -- --var "SUPABASE_URL:${SUPABASE_URL}" --var "STRIPE_PUBLISHABLE_KEY:${STRIPE_PUBLISHABLE_KEY}"
 
   deploy-web:
     needs: detect-changes
@@ -135,6 +149,9 @@ jobs:
           SUPABASE_PUBLISHABLE_KEY_STAGING: ${{ secrets.SUPABASE_PUBLISHABLE_KEY_STAGING }}
           API_URL_STAGING: ${{ secrets.API_URL_STAGING }}
           WEB_URL_STAGING: ${{ secrets.WEB_URL_STAGING }}
+          STRIPE_SECRET_KEY_STAGING: ${{ secrets.STRIPE_SECRET_KEY_STAGING }}
+          STRIPE_PUBLISHABLE_KEY_STAGING: ${{ secrets.STRIPE_PUBLISHABLE_KEY_STAGING }}
+          STRIPE_WEBHOOK_SECRET_STAGING: ${{ secrets.STRIPE_WEBHOOK_SECRET_STAGING }}
         run: pnpm validate:deploy-env -- --target staging
 
       - name: Build web for staging

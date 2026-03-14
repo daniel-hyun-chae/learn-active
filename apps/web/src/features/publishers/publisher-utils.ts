@@ -103,6 +103,10 @@ export function emptyCourse(t: (key: string) => string): CourseDraft {
   return {
     title: '',
     description: '',
+    priceCents: null,
+    currency: 'eur',
+    stripePriceId: null,
+    isPaid: false,
     modules: [
       {
         id: createId('module'),
@@ -124,8 +128,18 @@ export function emptyCourse(t: (key: string) => string): CourseDraft {
 }
 
 export function normalizeDraft(course: CourseDraft): CourseDraft {
+  const normalizedPriceCents =
+    typeof course.priceCents === 'number' && Number.isFinite(course.priceCents)
+      ? Math.max(0, Math.floor(course.priceCents))
+      : null
+  const normalizedCurrency = (course.currency ?? 'eur').toLowerCase()
+
   return {
     ...course,
+    priceCents: normalizedPriceCents,
+    currency: normalizedCurrency,
+    stripePriceId: course.stripePriceId ?? null,
+    isPaid: normalizedPriceCents !== null && normalizedPriceCents > 0,
     modules: course.modules.map((module: ModuleDraft, moduleIndex: number) => ({
       ...module,
       id: module.id ?? createId('module'),
@@ -213,6 +227,8 @@ export type CourseInputPayload = {
   id?: string
   title: string
   description: string
+  priceCents?: number | null
+  currency?: string
   modules: Array<{
     id?: string
     title: string
@@ -278,6 +294,8 @@ export function toCourseInput(course: CourseDraft): CourseInputPayload {
     id: normalized.id,
     title: normalized.title,
     description: normalized.description,
+    priceCents: normalized.priceCents ?? null,
+    currency: normalized.currency ?? 'eur',
     modules: normalized.modules.map((module) => ({
       id: module.id,
       title: module.title,

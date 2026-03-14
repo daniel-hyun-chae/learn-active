@@ -7,6 +7,7 @@ This directory is the technical entry point for humans and AI agents who need to
 - System architecture overview: `architecture/overview.md`
 - CI/CD, staging/production deploy and rollback runbook: `architecture/ci-cd.md`
 - Environment variable and secret scope: `architecture/environment-variables.md`
+- OpenCode governance and repo-local agent tooling: `architecture/opencode-governance.md`
 
 ## Supporting references
 

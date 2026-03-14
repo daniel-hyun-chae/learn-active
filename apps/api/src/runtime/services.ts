@@ -1,6 +1,7 @@
 import type { ApiRuntimeEnv } from './env.js'
 import { runtimeLogger } from './logger.js'
 import { generateId } from './crypto.js'
+import { createStripeService, type StripeService } from './stripe.js'
 import { createNodeDb } from '../db/connection.js'
 import {
   createInMemoryCourseRepository,
@@ -12,7 +13,19 @@ import {
 export type RuntimeServices = {
   env: ApiRuntimeEnv
   courseRepository: CourseRepository
+  stripe: StripeService | null
   generateId: () => string
+}
+
+function createRuntimeStripeService(env: ApiRuntimeEnv): StripeService | null {
+  if (!env.stripeSecretKey || !env.stripeWebhookSecret) {
+    return null
+  }
+
+  return createStripeService({
+    secretKey: env.stripeSecretKey,
+    webhookSecret: env.stripeWebhookSecret,
+  })
 }
 
 function createCourseRepository(env: ApiRuntimeEnv): Promise<CourseRepository>
@@ -57,6 +70,7 @@ export async function createRuntimeServices(
     return {
       env,
       courseRepository,
+      stripe: createRuntimeStripeService(env),
       generateId,
     }
   }
@@ -64,6 +78,7 @@ export async function createRuntimeServices(
   return {
     env,
     courseRepository: await createCourseRepository(env),
+    stripe: createRuntimeStripeService(env),
     generateId,
   }
 }

@@ -81,6 +81,9 @@ function run() {
     `SUPABASE_PUBLISHABLE_KEY_${suffix}`,
     `API_URL_${suffix}`,
     `WEB_URL_${suffix}`,
+    `STRIPE_SECRET_KEY_${suffix}`,
+    `STRIPE_PUBLISHABLE_KEY_${suffix}`,
+    `STRIPE_WEBHOOK_SECRET_${suffix}`,
   ]
 
   const missing = requiredKeys.filter((key) => {

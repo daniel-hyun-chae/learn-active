@@ -30,6 +30,7 @@ ARG VARIANT="20-bullseye"
 FROM mcr.microsoft.com/vscode/devcontainers/typescript-node:0-${VARIANT}
 
 ARG PLAYWRIGHT_VERSION="1.55.0"
+ARG STRIPE_CLI_VERSION="1.29.0"
 
 RUN cat > /usr/share/ca-certificates/Koerber_root_CA.crt <<'EOF'
 -----BEGIN CERTIFICATE-----
@@ -86,13 +87,24 @@ RUN curl -fsSL https://opencode.ai/install -o /tmp/install_opencode.sh \
            echo "opencode binary not found after install"; \
            exit 1; \
          fi; \
-       fi \
+        fi \
     && /usr/local/bin/opencode --version
+
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && install -m 0755 /root/.local/bin/uv /usr/local/bin/uv \
+    && install -m 0755 /root/.local/bin/uvx /usr/local/bin/uvx \
+    && /usr/local/bin/uvx --version
 
 RUN mkdir -p /home/node/.local/share/opencode \
     && chown -R node:node /home/node/.local
 
 RUN npx -y playwright@${PLAYWRIGHT_VERSION} install-deps chromium
+
+RUN curl -fsSL "https://github.com/stripe/stripe-cli/releases/download/v${STRIPE_CLI_VERSION}/stripe_${STRIPE_CLI_VERSION}_linux_x86_64.tar.gz" -o /tmp/stripe-cli.tar.gz \
+    && tar -xzf /tmp/stripe-cli.tar.gz -C /tmp \
+    && install -m 0755 /tmp/stripe /usr/local/bin/stripe \
+    && rm -rf /tmp/stripe /tmp/stripe-cli.tar.gz \
+    && /usr/local/bin/stripe --version
 
 RUN mkdir -p /home/node/.cache/ms-playwright \
     && chown -R node:node /home/node/.cache

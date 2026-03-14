@@ -68,6 +68,22 @@ function extractAccessTokens(url: string) {
   }
 }
 
+function shouldProcessAuthRedirect(url: string) {
+  const parsed = Linking.parse(url)
+  const path = [parsed.hostname, parsed.path].filter(Boolean).join('/')
+  if (path.includes('auth/callback')) {
+    return true
+  }
+
+  const params = parsed.queryParams ?? {}
+  return Boolean(
+    typeof params.access_token === 'string' ||
+      typeof params.refresh_token === 'string' ||
+      typeof params.code === 'string' ||
+      typeof params.token_hash === 'string',
+  )
+}
+
 async function applyRedirectSession(url: string) {
   const client = getMobileSupabaseClient()
   if (!client) {
@@ -161,6 +177,9 @@ export function MobileAuthProvider({ children }: MobileAuthProviderProps) {
     const redirectSubscription = Linking.addEventListener(
       'url',
       (event: { url: string }) => {
+        if (!shouldProcessAuthRedirect(event.url)) {
+          return
+        }
         void applyRedirectSession(event.url).catch((error) => {
           setErrorMessage(
             error instanceof Error ? error.message : String(error),
@@ -171,6 +190,10 @@ export function MobileAuthProvider({ children }: MobileAuthProviderProps) {
 
     void Linking.getInitialURL().then((initialUrl: string | null) => {
       if (!initialUrl) {
+        return
+      }
+
+      if (!shouldProcessAuthRedirect(initialUrl)) {
         return
       }
 

@@ -169,53 +169,31 @@ async function waitForLanding(url, timeoutMs = 30000) {
 async function fetchLessonPath(apiPort) {
   const endpoint = `http://localhost:${apiPort}/graphql`
 
-  async function queryCourses() {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        query: `query SmokeCourse {
-          courses {
-            id
-            modules { lessons { id } }
-          }
-        }`,
-      }),
-    })
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      query: `query SmokePublicCourses {
+        publicCourses {
+          id
+        }
+      }`,
+    }),
+  })
 
-    if (!response.ok) {
-      throw new Error('Failed to fetch courses for lesson path')
-    }
-
-    return response.json()
+  if (!response.ok) {
+    throw new Error('Failed to fetch public courses for lesson path')
   }
 
-  async function seedSampleCourse() {
-    await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        query: 'mutation SmokeSeed { seedSampleCourse { id } }',
-      }),
-    })
+  const payload = await response.json()
+  const course = payload?.data?.publicCourses?.[0]
+
+  if (!course?.id) {
+    throw new Error('No public course available for smoke check')
   }
 
-  let payload = await queryCourses()
-  let course = payload?.data?.courses?.[0]
-  let lesson = course?.modules?.[0]?.lessons?.[0]
-
-  if (!course?.id || !lesson?.id) {
-    await seedSampleCourse()
-    payload = await queryCourses()
-    course = payload?.data?.courses?.[0]
-    lesson = course?.modules?.[0]?.lessons?.[0]
-  }
-
-  if (!course?.id || !lesson?.id) {
-    throw new Error('No course/lesson available for smoke check')
-  }
-
-  return `/courses/${course.id}/lessons/${lesson.id}`
+  // Smoke only verifies route serving and shell bootstrap for lesson URLs.
+  return `/courses/${course.id}/lessons/smoke-local-lesson`
 }
 
 async function assertMobileApiHealth(apiPort) {

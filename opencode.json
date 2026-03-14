@@ -1,8 +1,22 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "instructions": [
-    ".opencode/rules/global-guidelines.md",
-    ".opencode/rules/product-guidelines.md",
-    ".opencode/rules/continuous-learning.md"
-  ]
+  "instructions": [".opencode/rules/*.md"],
+  "mcp": {
+    "context7": {
+      "type": "remote",
+      "url": "https://mcp.context7.com/mcp"
+    },
+    "gh_grep": {
+      "type": "remote",
+      "url": "https://mcp.grep.app"
+    },
+    "playwright": {
+      "type": "local",
+      "command": ["npx", "@playwright/mcp@latest"]
+    },
+    "code-index": {
+      "type": "local",
+      "command": ["uvx", "code-index-mcp"]
+    }
+  }
 }

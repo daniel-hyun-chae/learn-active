@@ -11,6 +11,10 @@ This repository contains:
 
 If you cloned the repo and opened it in a dev container, run this exact flow:
 
+Stripe CLI is preinstalled in the devcontainer image, so local Stripe webhook forwarding is available without extra manual installation inside the container.
+
+OpenCode is also installed in the devcontainer, and this repo keeps its OpenCode governance locally in `AGENTS.md`, `opencode.json`, and `.opencode/` rather than relying on host `~/.config/opencode`.
+
 1. Start Supabase local services:
 
 ```
@@ -38,8 +42,15 @@ Core local development:
 ```
 pnpm db:up
 pnpm dev
+pnpm dev:cleanup
 pnpm db:status
 pnpm db:logs
+```
+
+If a previous `pnpm dev` / `wrangler dev` / `vite preview` process was left behind and ports 4000 or 4100 stay occupied, run:
+
+```
+pnpm dev:cleanup
 ```
 
 Guardrails:
@@ -69,12 +80,40 @@ For React Native local validation, use:
 
 Do not commit real secrets.
 
+## Stripe test mode (local)
+
+For paid course checkout development, set these variables in `.env.local` (preferred) or `.env`:
+
+- `STRIPE_SECRET_KEY`
+- `STRIPE_PUBLISHABLE_KEY`
+
+Then run `pnpm dev`. In local `APP_ENV=local`, the dev stack auto-starts Stripe CLI webhook forwarding and injects `STRIPE_WEBHOOK_SECRET` for the API when:
+
+- `STRIPE_SECRET_KEY` is present
+- `STRIPE_WEBHOOK_SECRET` is blank
+- `STRIPE_CLI_WEBHOOK_AUTOSTART` is not disabled
+
+Manual fallback: set `STRIPE_WEBHOOK_SECRET` yourself or disable auto-start with `STRIPE_CLI_WEBHOOK_AUTOSTART=0` and forward Stripe webhooks to the local API:
+
+```
+stripe listen --forward-to localhost:4000/api/webhooks/stripe
+```
+
+Use Stripe test-mode credentials for local and staging. Staging should use GitHub environment secrets (`STRIPE_SECRET_KEY_STAGING`, `STRIPE_PUBLISHABLE_KEY_STAGING`, `STRIPE_WEBHOOK_SECRET_STAGING`) and a hosted webhook endpoint rather than a long-running Stripe CLI session.
+
+If you use the devcontainer, make sure you authenticate Stripe CLI inside the container session before the first local Stripe run:
+
+```
+stripe login
+```
+
 ## Local / staging / production usage
 
 - Local development (devcontainer-first): this README.
 - Technical architecture overview: `architecture/overview.md`.
 - CI/CD, staging, production deploy, and rollback runbook: `architecture/ci-cd.md`.
 - Environment variable and secret scope: `architecture/environment-variables.md`.
+- OpenCode governance and repo-local agent tooling: `architecture/opencode-governance.md`.
 - Key implementation decisions: `decision-log/`.
 
 ## Host requirements

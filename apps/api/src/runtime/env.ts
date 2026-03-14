@@ -7,9 +7,13 @@ export type ApiRuntimeEnv = {
   stage: RuntimeStage
   port: number
   graphqlEndpoint: '/graphql'
+  stripeWebhookEndpoint: '/api/webhooks/stripe'
   databaseUrl: string | null
   supabaseUrl: string | null
   supabaseServiceRoleKey: string | null
+  stripeSecretKey: string | null
+  stripePublishableKey: string | null
+  stripeWebhookSecret: string | null
 }
 
 export type WorkerBindings = {
@@ -17,6 +21,9 @@ export type WorkerBindings = {
   DATABASE_URL?: string
   SUPABASE_URL?: string
   SUPABASE_SERVICE_ROLE_KEY?: string
+  STRIPE_SECRET_KEY?: string
+  STRIPE_PUBLISHABLE_KEY?: string
+  STRIPE_WEBHOOK_SECRET?: string
   PORT?: string
 }
 
@@ -90,9 +97,13 @@ export function loadNodeRuntimeEnv(
     stage: resolveStage(source.APP_ENV ?? source.NODE_ENV),
     port: Number(source.PORT ?? 4000),
     graphqlEndpoint: '/graphql',
+    stripeWebhookEndpoint: '/api/webhooks/stripe',
     databaseUrl: normalizeOptional(source.DATABASE_URL),
     supabaseUrl: normalizeOptional(source.SUPABASE_URL),
     supabaseServiceRoleKey: normalizeOptional(source.SUPABASE_SERVICE_ROLE_KEY),
+    stripeSecretKey: normalizeOptional(source.STRIPE_SECRET_KEY),
+    stripePublishableKey: normalizeOptional(source.STRIPE_PUBLISHABLE_KEY),
+    stripeWebhookSecret: normalizeOptional(source.STRIPE_WEBHOOK_SECRET),
   }
 
   assertRuntimeEnv(runtimeEnv)
@@ -106,11 +117,15 @@ export function loadWorkerRuntimeEnv(bindings: WorkerBindings): ApiRuntimeEnv {
     stage: resolveStage(bindings.APP_ENV),
     port: Number(bindings.PORT ?? 4000),
     graphqlEndpoint: '/graphql',
+    stripeWebhookEndpoint: '/api/webhooks/stripe',
     databaseUrl: normalizeOptional(bindings.DATABASE_URL),
     supabaseUrl: normalizeOptional(bindings.SUPABASE_URL),
     supabaseServiceRoleKey: normalizeOptional(
       bindings.SUPABASE_SERVICE_ROLE_KEY,
     ),
+    stripeSecretKey: normalizeOptional(bindings.STRIPE_SECRET_KEY),
+    stripePublishableKey: normalizeOptional(bindings.STRIPE_PUBLISHABLE_KEY),
+    stripeWebhookSecret: normalizeOptional(bindings.STRIPE_WEBHOOK_SECRET),
   }
 
   assertRuntimeEnv(runtimeEnv)

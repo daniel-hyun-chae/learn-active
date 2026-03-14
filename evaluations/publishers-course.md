@@ -5,7 +5,7 @@ Criteria:
 
 - The /publish route renders a publisher landing with course cards and a create-course action.
 - Entering a course routes to /publish/$courseId and opens the dedicated editor workspace.
-- Publishers can add, rename, reorder, and move modules and lessons, plus edit course metadata (title + description only).
+- Publishers can add, rename, reorder, and move modules and lessons, plus edit course metadata (title + description + pricing).
 - Lesson content uses a rich text editor powered by Lexical.
 - Lessons support summary content and content pages as separate selectable authoring levels.
 - Fill-in-the-blank builder supports [blank] templates with per-blank typing or options configuration.
@@ -71,3 +71,15 @@ Criteria:
 - Rollback is implemented as restore-as-draft from an older version, then publish as a new next version (history is never rewritten).
 - Publisher create/edit/publish operations are available only to owner members with manage roles.
 - Public catalog and learner flows never expose unpublished draft versions.
+
+## EVAL-PUBLISHERS-COURSE-007: Paid pricing configuration and Stripe price mapping
+
+Goal: Publishers can configure paid pricing with stable invariants, and price updates create a new Stripe Price mapping.
+Criteria:
+
+- Course editor exposes a pricing control with EUR-only scope for this phase.
+- Blank or zero price config is treated as free, and positive `price_cents` is treated as paid only when it satisfies the Stripe minimum charge for EUR (`>= 50`).
+- Saving a paid course provisions a Stripe Price and persists `stripe_price_id`.
+- Updating a paid course price creates a new Stripe Price and updates course mapping to the latest `stripe_price_id`.
+- Free-course saves clear paid mapping in course state so free enrollment does not require Stripe checkout.
+- Local paid-course saves work in `APP_ENV=local` without manually copying a fresh Stripe CLI webhook secret when local Stripe CLI auto-start is enabled.

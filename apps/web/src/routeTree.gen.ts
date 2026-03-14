@@ -18,6 +18,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as CoursesSlugRouteImport } from './routes/courses.$slug'
 import { Route as PublishCourseIdRouteImport } from './routes/publish.$courseId'
 import { Route as CoursesCourseIdLessonsLessonIdRouteImport } from './routes/courses.$courseId.lessons.$lessonId'
+import { Route as PurchaseSuccessRouteImport } from './routes/purchase.success'
 
 const PublishRoute = PublishRouteImport.update({
   id: '/publish',
@@ -65,6 +66,11 @@ const CoursesCourseIdLessonsLessonIdRoute =
     path: '/courses/$courseId/lessons/$lessonId',
     getParentRoute: () => rootRouteImport,
   } as any)
+const PurchaseSuccessRoute = PurchaseSuccessRouteImport.update({
+  id: '/purchase/success',
+  path: '/purchase/success',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -76,6 +82,7 @@ export interface FileRoutesByFullPath {
   '/publish': typeof PublishRouteWithChildren
   '/publish/$courseId': typeof PublishCourseIdRoute
   '/courses/$courseId/lessons/$lessonId': typeof CoursesCourseIdLessonsLessonIdRoute
+  '/purchase/success': typeof PurchaseSuccessRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -87,6 +94,7 @@ export interface FileRoutesByTo {
   '/publish': typeof PublishRouteWithChildren
   '/publish/$courseId': typeof PublishCourseIdRoute
   '/courses/$courseId/lessons/$lessonId': typeof CoursesCourseIdLessonsLessonIdRoute
+  '/purchase/success': typeof PurchaseSuccessRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -99,6 +107,7 @@ export interface FileRoutesById {
   '/publish': typeof PublishRouteWithChildren
   '/publish/$courseId': typeof PublishCourseIdRoute
   '/courses/$courseId/lessons/$lessonId': typeof CoursesCourseIdLessonsLessonIdRoute
+  '/purchase/success': typeof PurchaseSuccessRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -112,6 +121,7 @@ export interface FileRouteTypes {
     | '/publish'
     | '/publish/$courseId'
     | '/courses/$courseId/lessons/$lessonId'
+    | '/purchase/success'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -123,6 +133,7 @@ export interface FileRouteTypes {
     | '/publish'
     | '/publish/$courseId'
     | '/courses/$courseId/lessons/$lessonId'
+    | '/purchase/success'
   id:
     | '__root__'
     | '/'
@@ -134,6 +145,7 @@ export interface FileRouteTypes {
     | '/publish'
     | '/publish/$courseId'
     | '/courses/$courseId/lessons/$lessonId'
+    | '/purchase/success'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -144,6 +156,7 @@ export interface RootRouteChildren {
   LearnRoute: typeof LearnRoute
   PublishRoute: typeof PublishRouteWithChildren
   CoursesCourseIdLessonsLessonIdRoute: typeof CoursesCourseIdLessonsLessonIdRoute
+  PurchaseSuccessRoute: typeof PurchaseSuccessRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -211,6 +224,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CoursesCourseIdLessonsLessonIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/purchase/success': {
+      id: '/purchase/success'
+      path: '/purchase/success'
+      fullPath: '/purchase/success'
+      preLoaderRoute: typeof PurchaseSuccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -243,6 +263,7 @@ const rootRouteChildren: RootRouteChildren = {
   LearnRoute: LearnRoute,
   PublishRoute: PublishRouteWithChildren,
   CoursesCourseIdLessonsLessonIdRoute: CoursesCourseIdLessonsLessonIdRoute,
+  PurchaseSuccessRoute: PurchaseSuccessRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

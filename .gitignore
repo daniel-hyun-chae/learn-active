@@ -11,9 +11,6 @@ apps/*/node_modules
 shared/*/node_modules
 .pnpm-store
 
-# Local agent/session artifacts
-.opencode/memory/
-
 # Generated app runtime caches
 apps/web/.nitro/
 apps/web/.tanstack/

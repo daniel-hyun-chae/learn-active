@@ -10,13 +10,20 @@ import {
 import { useTranslation } from 'react-i18next'
 import { tokens } from '@app/shared-tokens'
 import { quizAttemptStore } from '../../../shared/offline/quizAttemptStore'
-import type { Course } from '../course/types'
+import type { CatalogCourse, Course } from '../course/types'
 
 type LearnerHomeProps = {
   courses: Course[]
+  catalogCourses: CatalogCourse[]
   loading: boolean
   error: string | null
+  purchaseError: string | null
+  statusMessage: string | null
+  pendingCourseId: string | null
+  purchasingCourseId: string | null
   onRetry: () => void
+  onEnrollFree: (courseId: string) => void
+  onBuyCourse: (courseId: string) => void
   onSelectLesson: (courseId: string, lessonId: string) => void
 }
 
@@ -30,13 +37,35 @@ function getFirstLessonId(course: Course) {
 
 export function LearnerHome({
   courses,
+  catalogCourses,
   loading,
   error,
+  purchaseError,
+  statusMessage,
+  pendingCourseId,
+  purchasingCourseId,
   onRetry,
+  onEnrollFree,
+  onBuyCourse,
   onSelectLesson,
 }: LearnerHomeProps) {
   const { t } = useTranslation()
   const [status, setStatus] = useState('')
+
+  function formatPrice(
+    priceCents: number | null | undefined,
+    currency: string,
+  ) {
+    if (typeof priceCents !== 'number' || priceCents <= 0) {
+      return null
+    }
+
+    return new Intl.NumberFormat('en-IE', {
+      style: 'currency',
+      currency: currency.toUpperCase(),
+      minimumFractionDigits: 2,
+    }).format(priceCents / 100)
+  }
 
   function createAttemptId() {
     return globalThis.crypto?.randomUUID?.() ?? `attempt-${Date.now()}`
@@ -107,33 +136,102 @@ export function LearnerHome({
         </View>
       ) : null}
 
-      {!loading && courses.length === 0 ? (
+      {!loading && catalogCourses.length === 0 ? (
         <View style={styles.emptyCard}>
           <Text style={styles.emptyText}>{t('learners.courses.empty')}</Text>
         </View>
       ) : null}
 
+      {purchaseError ? (
+        <View style={styles.errorCard}>
+          <Text style={styles.errorText}>{purchaseError}</Text>
+        </View>
+      ) : null}
+
+      {statusMessage ? (
+        <Text style={styles.offlineStatus}>{statusMessage}</Text>
+      ) : null}
+
       <View style={styles.courseGrid}>
-        {courses.map((course) => {
-          const lessonId = getFirstLessonId(course)
+        {catalogCourses.map((catalogCourse) => {
+          const enrolledCourse = courses.find(
+            (item) => item.id === catalogCourse.id,
+          )
+          const lessonId = enrolledCourse
+            ? getFirstLessonId(enrolledCourse)
+            : undefined
+          const isPending = pendingCourseId === catalogCourse.id
+          const isPurchasing = purchasingCourseId === catalogCourse.id
+
           return (
-            <View key={course.id} style={styles.courseCard}>
-              <Text style={styles.courseTitle}>{course.title}</Text>
-              <Text style={styles.courseDescription}>{course.description}</Text>
-              <Pressable
-                accessibilityRole="button"
-                disabled={!lessonId}
-                onPress={() => lessonId && onSelectLesson(course.id, lessonId)}
-                style={({ pressed }) => [
-                  styles.startButton,
-                  pressed && styles.startButtonPressed,
-                  !lessonId && styles.startButtonDisabled,
-                ]}
-              >
-                <Text style={styles.startLabel}>
-                  {t('learners.courses.start')}
+            <View key={catalogCourse.id} style={styles.courseCard}>
+              <Text style={styles.courseTitle}>{catalogCourse.title}</Text>
+              <Text style={styles.courseDescription}>
+                {catalogCourse.description}
+              </Text>
+              <Text style={styles.courseMeta}>
+                {catalogCourse.isPaid
+                  ? t('catalog.price', {
+                      price:
+                        formatPrice(
+                          catalogCourse.priceCents,
+                          catalogCourse.currency,
+                        ) ??
+                        `${catalogCourse.priceCents ?? 0} ${catalogCourse.currency.toUpperCase()}`,
+                    })
+                  : t('catalog.free')}
+              </Text>
+
+              {lessonId ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => onSelectLesson(catalogCourse.id, lessonId)}
+                  style={({ pressed }) => [
+                    styles.startButton,
+                    pressed && styles.startButtonPressed,
+                  ]}
+                >
+                  <Text style={styles.startLabel}>
+                    {t('learners.courses.start')}
+                  </Text>
+                </Pressable>
+              ) : catalogCourse.isPaid ? (
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isPurchasing || isPending}
+                  onPress={() => onBuyCourse(catalogCourse.id)}
+                  style={({ pressed }) => [
+                    styles.startButton,
+                    pressed && styles.startButtonPressed,
+                    (isPurchasing || isPending) && styles.startButtonDisabled,
+                  ]}
+                >
+                  <Text style={styles.startLabel}>
+                    {isPurchasing || isPending
+                      ? t('mobile.learners.pending')
+                      : t('mobile.learners.buy')}
+                  </Text>
+                </Pressable>
+              ) : (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => onEnrollFree(catalogCourse.id)}
+                  style={({ pressed }) => [
+                    styles.startButton,
+                    pressed && styles.startButtonPressed,
+                  ]}
+                >
+                  <Text style={styles.startLabel}>
+                    {t('mobile.learners.enrollFree')}
+                  </Text>
+                </Pressable>
+              )}
+
+              {isPending ? (
+                <Text style={styles.pendingText}>
+                  {t('mobile.learners.pending')}
                 </Text>
-              </Pressable>
+              ) : null}
             </View>
           )
         })}
@@ -268,6 +366,11 @@ const styles = StyleSheet.create({
     color: tokens.color.muted,
     marginBottom: tokens.spacing.sm,
   },
+  courseMeta: {
+    fontSize: tokens.font.size.sm,
+    color: tokens.color.muted,
+    marginBottom: tokens.spacing.sm,
+  },
   startButton: {
     alignSelf: 'flex-start',
     backgroundColor: tokens.color.primary,
@@ -280,6 +383,11 @@ const styles = StyleSheet.create({
   },
   startButtonDisabled: {
     opacity: tokens.opacity.disabled,
+  },
+  pendingText: {
+    marginTop: tokens.spacing.xs,
+    color: tokens.color.muted,
+    fontSize: tokens.font.size.sm,
   },
   startLabel: {
     color: tokens.color.text,

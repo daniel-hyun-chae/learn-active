@@ -17,6 +17,7 @@ Criteria:
 - Web deploy targets Cloudflare Pages project `course-web-staging`.
 - Deploy jobs validate staging environment contract before deployment.
 - Staging deployment requires `pnpm validate:deploy-env -- --target staging` to pass.
+- Staging deployment requires Stripe staging secrets and syncs hosted Worker Stripe secrets before API deploy.
 
 ## EVAL-PLATFORM-CICD-003: Manual production deployment and rollback
 
@@ -28,6 +29,7 @@ Criteria:
 - API deploy targets Cloudflare Worker `course-api`.
 - Web deploy targets Cloudflare Pages project `course-web`.
 - Production deployment requires `pnpm validate:deploy-env -- --target production` to pass.
+- Production deployment requires Stripe production secrets and syncs hosted Worker Stripe secrets before API deploy.
 
 ## EVAL-PLATFORM-CICD-004: Monorepo-aware deploy behavior
 
@@ -46,6 +48,7 @@ Criteria:
 - Documentation describes workflow structure and deployment flow.
 - Documentation defines staging/production environment model and resource mapping.
 - Documentation lists required repository and environment secrets.
+- Documentation explains Stripe local-vs-hosted configuration expectations.
 - Documentation explains manual production trigger and previous-commit redeploy/rollback.
 - README links to CI/CD documentation.
 

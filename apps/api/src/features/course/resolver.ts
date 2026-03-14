@@ -4,18 +4,76 @@ import type { GraphQLContext } from '../../graphql/context.js'
 import { seedCourseRow } from './seed.js'
 import {
   Course,
+  CheckoutChannel,
+  CheckoutSession,
   CourseVersionDiff,
   CourseVersionHistory,
   Enrollment,
+  EnrollmentStatus,
   MyCourse,
+  Payment,
   PublicCourse,
 } from './types.js'
 import { CourseInput } from './inputs.js'
 import { requireAuthenticatedUser } from '../auth/guard.js'
-import { mapPublisherCourseToCourse, normalizeCourseInput } from './model.js'
+import {
+  isActivelyEnrolled,
+  mapPublisherCourseToCourse,
+  normalizeCourseInput,
+} from './model.js'
 
 const COURSE_EDIT_FORBIDDEN_MESSAGE =
   'Course is not editable by current publisher.'
+
+const DEFAULT_WEB_ORIGIN = 'http://localhost:3000'
+const STRIPE_MIN_EUR_PRICE_CENTS = 50
+
+function getRequestOrigin(request: Request) {
+  const candidates = [
+    request.headers.get('origin'),
+    request.headers.get('referer'),
+    request.url,
+  ]
+
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue
+    }
+
+    try {
+      return new URL(candidate).origin
+    } catch {
+      // keep trying the next candidate
+    }
+  }
+
+  try {
+    return new URL(request.url).origin
+  } catch {
+    return DEFAULT_WEB_ORIGIN
+  }
+}
+
+function assertEurCurrency(currency: string) {
+  if (currency !== 'eur') {
+    throw new GraphQLError('Only EUR pricing is supported in this phase.', {
+      extensions: { code: 'BAD_USER_INPUT' },
+    })
+  }
+}
+
+function assertMinimumStripePrice(priceCents: number | null | undefined) {
+  if (
+    typeof priceCents === 'number' &&
+    priceCents > 0 &&
+    priceCents < STRIPE_MIN_EUR_PRICE_CENTS
+  ) {
+    throw new GraphQLError(
+      `Paid EUR courses must be priced at least ${STRIPE_MIN_EUR_PRICE_CENTS} cents.`,
+      { extensions: { code: 'BAD_USER_INPUT' } },
+    )
+  }
+}
 
 @Resolver(() => Course)
 export class CourseResolver {
@@ -62,6 +120,32 @@ export class CourseResolver {
     return await ctx.services.courseRepository.listMyCourses({
       userId: user.id,
     })
+  }
+
+  @Query(() => [Payment])
+  async myPayments(@Ctx() ctx: GraphQLContext) {
+    const user = requireAuthenticatedUser(ctx)
+    return await ctx.services.courseRepository.listMyPayments({
+      userId: user.id,
+    })
+  }
+
+  @Query(() => EnrollmentStatus)
+  async courseEnrollmentStatus(
+    @Arg('courseId', () => String) courseId: string,
+    @Ctx() ctx: GraphQLContext,
+  ) {
+    const user = requireAuthenticatedUser(ctx)
+    const enrollment =
+      await ctx.services.courseRepository.getEnrollmentForUserCourse({
+        userId: user.id,
+        courseId,
+      })
+
+    return {
+      enrolled: enrollment ? isActivelyEnrolled(enrollment.status) : false,
+      status: enrollment?.status ?? null,
+    }
   }
 
   @Query(() => [Course])
@@ -139,6 +223,39 @@ export class CourseResolver {
     const user = requireAuthenticatedUser(ctx)
 
     const row = normalizeCourseInput(input, ctx.services.generateId)
+    assertEurCurrency(row.currency)
+    assertMinimumStripePrice(row.priceCents)
+
+    const isPaid = typeof row.priceCents === 'number' && row.priceCents > 0
+
+    let stripePriceId: string | null = null
+    if (isPaid) {
+      if (!ctx.services.stripe) {
+        throw new GraphQLError(
+          'Stripe is not configured in this environment.',
+          {
+            extensions: { code: 'SERVICE_UNAVAILABLE' },
+          },
+        )
+      }
+
+      const existing =
+        await ctx.services.courseRepository.getPublisherCourseById({
+          userId: user.id,
+          email: user.email,
+          id: row.id,
+        })
+
+      const provisioned = await ctx.services.stripe.createOrUpdateCoursePrice({
+        courseId: row.id,
+        courseTitle: row.title,
+        amountCents: row.priceCents ?? 0,
+        currency: row.currency,
+        existingPriceId: existing?.stripePriceId ?? null,
+      })
+      stripePriceId = provisioned.stripePriceId
+    }
+
     try {
       const saved = await ctx.services.courseRepository.upsertPublisherCourse({
         userId: user.id,
@@ -147,6 +264,9 @@ export class CourseResolver {
           id: row.id,
           title: row.title,
           description: row.description,
+          priceCents: row.priceCents,
+          currency: row.currency,
+          stripePriceId: isPaid ? stripePriceId : null,
           content: row.content,
         },
       })
@@ -171,10 +291,93 @@ export class CourseResolver {
           id: seedCourseRow.id,
           title: seedCourseRow.title,
           description: seedCourseRow.description,
+          priceCents: null,
+          currency: 'eur',
+          stripePriceId: null,
           content: seedCourseRow.content,
         },
       })
     return mapPublisherCourseToCourse(seeded)
+  }
+
+  @Mutation(() => CheckoutSession)
+  async createCourseCheckoutSession(
+    @Arg('courseId', () => String) courseId: string,
+    @Arg('channel', () => CheckoutChannel, {
+      nullable: true,
+      defaultValue: CheckoutChannel.WEB,
+    })
+    channel: CheckoutChannel,
+    @Ctx() ctx: GraphQLContext,
+  ) {
+    const user = requireAuthenticatedUser(ctx)
+
+    const course =
+      await ctx.services.courseRepository.getPublicCourseById(courseId)
+    if (!course) {
+      throw new GraphQLError('Course is not purchasable.', {
+        extensions: { code: 'BAD_USER_INPUT' },
+      })
+    }
+
+    if (!course.isPaid || !course.priceCents || course.priceCents <= 0) {
+      throw new GraphQLError(
+        'This course is free and does not require checkout.',
+        {
+          extensions: { code: 'BAD_USER_INPUT' },
+        },
+      )
+    }
+
+    const existingEnrollment =
+      await ctx.services.courseRepository.getEnrollmentForUserCourse({
+        userId: user.id,
+        courseId,
+      })
+    if (existingEnrollment && isActivelyEnrolled(existingEnrollment.status)) {
+      throw new GraphQLError(
+        'You are already actively enrolled in this course.',
+        {
+          extensions: { code: 'BAD_USER_INPUT' },
+        },
+      )
+    }
+
+    if (!course.stripePriceId) {
+      throw new GraphQLError('Course checkout is not configured.', {
+        extensions: { code: 'BAD_USER_INPUT' },
+      })
+    }
+
+    if (!ctx.services.stripe) {
+      throw new GraphQLError('Stripe is not configured in this environment.', {
+        extensions: { code: 'SERVICE_UNAVAILABLE' },
+      })
+    }
+
+    let session
+    try {
+      session = await ctx.services.stripe.createCheckoutSession({
+        stripePriceId: course.stripePriceId,
+        userId: user.id,
+        courseId: course.id,
+        courseSlug: course.slug,
+        channel,
+        requestOrigin: getRequestOrigin(ctx.request),
+      })
+    } catch (error) {
+      throw new GraphQLError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to create Stripe checkout session.',
+        { extensions: { code: 'SERVICE_UNAVAILABLE' } },
+      )
+    }
+
+    return {
+      url: session.url,
+      sessionId: session.sessionId,
+    }
   }
 
   @Mutation(() => Course)

@@ -7,10 +7,21 @@ export type CourseContent = {
   modules: Course['modules']
 }
 
+export const ACTIVE_ENROLLMENT_STATUSES = ['active', 'completed'] as const
+
+export function isActivelyEnrolled(status: string) {
+  return ACTIVE_ENROLLMENT_STATUSES.includes(
+    status as (typeof ACTIVE_ENROLLMENT_STATUSES)[number],
+  )
+}
+
 export type PublisherCourseRecord = {
   courseId: string
   slug: string
   ownerId: string
+  priceCents: number | null
+  currency: string
+  stripePriceId: string | null
   versionId: string
   version: number
   status: 'draft' | 'published' | 'archived'
@@ -29,6 +40,10 @@ export type PublicCourseRecord = {
   slug: string
   title: string
   description: string
+  priceCents: number | null
+  currency: string
+  stripePriceId: string | null
+  isPaid: boolean
   ownerDisplayName?: string
 }
 
@@ -37,6 +52,18 @@ export type EnrollmentRecord = {
   courseId: string
   status: string
   enrolledAt: string
+}
+
+export type PaymentRecord = {
+  id: string
+  userId: string
+  courseId: string
+  stripeSessionId: string
+  stripePaymentIntentId: string | null
+  amountCents: number
+  currency: string
+  status: string
+  createdAt: string
 }
 
 export type CourseVersionHistoryRecord = {
@@ -71,7 +98,14 @@ function ensureId(generateId: IdGenerator, value?: string): string {
 export function normalizeCourseInput(
   input: CourseInput,
   generateId: IdGenerator,
-): { id: string; title: string; description: string; content: CourseContent } {
+): {
+  id: string
+  title: string
+  description: string
+  priceCents: number | null
+  currency: string
+  content: CourseContent
+} {
   const modules = (input.modules ?? []).map((moduleInput, moduleIndex) => ({
     id: ensureId(generateId, moduleInput.id),
     title: moduleInput.title,
@@ -136,6 +170,11 @@ export function normalizeCourseInput(
     id: input.id ?? generateId(),
     title: input.title,
     description: input.description,
+    priceCents:
+      typeof input.priceCents === 'number' && Number.isFinite(input.priceCents)
+        ? Math.max(0, Math.floor(input.priceCents))
+        : null,
+    currency: (input.currency ?? 'eur').toLowerCase(),
     content: { modules },
   }
 }
@@ -150,6 +189,10 @@ export function mapPublisherCourseToCourse(
     status: record.status,
     title: record.title,
     description: record.description,
+    priceCents: record.priceCents,
+    currency: record.currency,
+    stripePriceId: record.stripePriceId,
+    isPaid: typeof record.priceCents === 'number' && record.priceCents > 0,
     changeNote: record.changeNote ?? null,
     createdAt: record.createdAt,
     createdBy: record.createdBy,

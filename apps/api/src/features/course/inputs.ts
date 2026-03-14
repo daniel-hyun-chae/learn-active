@@ -161,6 +161,12 @@ export class CourseInput {
   @Field(() => String)
   description!: string
 
+  @Field(() => Int, { nullable: true })
+  priceCents?: number
+
+  @Field(() => String, { nullable: true })
+  currency?: string
+
   @Field(() => [ModuleInput])
   modules!: ModuleInput[]
 }

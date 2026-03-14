@@ -89,12 +89,18 @@ Store these in GitHub Environments:
   - `SUPABASE_PUBLISHABLE_KEY_STAGING`
   - `API_URL_STAGING`
   - `WEB_URL_STAGING`
+  - `STRIPE_SECRET_KEY_STAGING`
+  - `STRIPE_PUBLISHABLE_KEY_STAGING`
+  - `STRIPE_WEBHOOK_SECRET_STAGING`
 
 - Environment `production`:
   - `SUPABASE_PROJECT_URL_PROD`
   - `SUPABASE_PUBLISHABLE_KEY_PROD`
   - `API_URL_PROD`
   - `WEB_URL_PROD`
+  - `STRIPE_SECRET_KEY_PROD`
+  - `STRIPE_PUBLISHABLE_KEY_PROD`
+  - `STRIPE_WEBHOOK_SECRET_PROD`
 
 ## Deployment environment contract validation
 
@@ -109,8 +115,17 @@ Validation checks:
 - Supabase project URL, API URL, and web URL are absolute `https` URLs.
 - Hosted URLs do not target localhost variants.
 - Expected hosted auth callback target is printed as `WEB_URL_<ENV>/auth`.
+- Stripe staging/production credentials are present before deploy.
 
 If validation fails, deploy is blocked.
+
+### Stripe in hosted environments
+
+- Local development can use Stripe CLI webhook forwarding.
+- Staging and production do not depend on a long-running Stripe CLI session.
+- API deploy jobs sync `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` into the target Worker as Cloudflare secrets before deploy.
+- API deploy jobs pass `STRIPE_PUBLISHABLE_KEY` as a Worker variable during deploy.
+- Use Stripe test-mode credentials for staging unless and until a live-mode production rollout is intentionally configured.
 
 ## Built web endpoint verification
 
@@ -148,6 +163,9 @@ Where to obtain values:
 - `SUPABASE_PUBLISHABLE_KEY_*`: Supabase dashboard -> Project -> Settings -> API -> Publishable key.
 - `API_URL_*`: Cloudflare Workers -> select `course-api-staging` / `course-api` -> copy public domain/route (use GraphQL endpoint URL expected by web runtime).
 - `WEB_URL_*`: Cloudflare Pages -> select `course-web-staging` / `course-web` -> copy public Pages/custom domain URL.
+- `STRIPE_SECRET_KEY_*`: Stripe dashboard -> Developers -> API keys -> Secret key (use test-mode keys for staging).
+- `STRIPE_PUBLISHABLE_KEY_*`: Stripe dashboard -> Developers -> API keys -> Publishable key.
+- `STRIPE_WEBHOOK_SECRET_*`: Stripe dashboard -> Webhooks -> select the hosted endpoint for the environment -> Signing secret.
 
 ## Triggering production deployment
 

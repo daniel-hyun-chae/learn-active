@@ -20,6 +20,10 @@ Use `.env.example` as the template. Keep real values only in local, untracked en
 | `VITE_GRAPHQL_ENDPOINT`                   | Web GraphQL endpoint                                                   | Optional     | Template defaults to local API endpoint.                                                                                                               |
 | `GRAPHQL_ENDPOINT`                        | Shared/server GraphQL endpoint fallback                                | Optional     | Template defaults to local API endpoint.                                                                                                               |
 | `EXPO_PUBLIC_GRAPHQL_ENDPOINT`            | Mobile GraphQL endpoint                                                | Optional     | Template defaults to local API endpoint.                                                                                                               |
+| `STRIPE_SECRET_KEY`                       | Stripe test-mode secret key for local API price/session operations     | Optional     | Required for local paid-course authoring and checkout flows. Keep in `.env.local` when possible.                                                       |
+| `STRIPE_PUBLISHABLE_KEY`                  | Stripe test-mode publishable key for local client/runtime integration  | Optional     | Keep aligned with the same Stripe test account as `STRIPE_SECRET_KEY`.                                                                                 |
+| `STRIPE_WEBHOOK_SECRET`                   | Stripe webhook signing secret for local API verification               | Optional     | Leave blank to let `pnpm dev` auto-start Stripe CLI and inject the local listener secret.                                                              |
+| `STRIPE_CLI_WEBHOOK_AUTOSTART`            | Enables local Stripe CLI webhook bootstrap                             | Optional     | Default template value is `1`. Set `0` to opt out and manage Stripe CLI/webhook secret manually.                                                       |
 | `APP_ENV`                                 | Stage selector (`local/staging/production`)                            | Optional     | Template default is `local`.                                                                                                                           |
 
 ## 2) GitHub repository secrets (manual set in repo secrets)
@@ -37,6 +41,9 @@ These are shared deploy credentials used by staging and production workflows:
 - `SUPABASE_PUBLISHABLE_KEY_STAGING`
 - `API_URL_STAGING`
 - `WEB_URL_STAGING`
+- `STRIPE_SECRET_KEY_STAGING`
+- `STRIPE_PUBLISHABLE_KEY_STAGING`
+- `STRIPE_WEBHOOK_SECRET_STAGING`
 
 ### Production environment secrets
 
@@ -44,6 +51,9 @@ These are shared deploy credentials used by staging and production workflows:
 - `SUPABASE_PUBLISHABLE_KEY_PROD`
 - `API_URL_PROD`
 - `WEB_URL_PROD`
+- `STRIPE_SECRET_KEY_PROD`
+- `STRIPE_PUBLISHABLE_KEY_PROD`
+- `STRIPE_WEBHOOK_SECRET_PROD`
 
 Validation source of truth: `scripts/validate-deploy-env.mjs`.
 

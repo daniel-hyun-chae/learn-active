@@ -48,6 +48,10 @@ const COURSE_DRAFT_SELECTION = `
   status
   title
   description
+  priceCents
+  currency
+  stripePriceId
+  isPaid
   changeNote
   createdAt
   createdBy
@@ -1043,6 +1047,30 @@ export function PublisherHome({ course }: PublisherHomeProps) {
               value={draft.title}
               onChange={(event) => updateDraft({ title: event.target.value })}
             />
+          </label>
+          <label className="publisher-field">
+            {t('publishers.course.priceEur')}
+            <input
+              type="number"
+              min={0}
+              step={1}
+              data-test="publisher-course-price-cents"
+              value={draft.priceCents ?? ''}
+              onChange={(event) => {
+                const raw = event.target.value.trim()
+                if (raw.length === 0) {
+                  updateDraft({ priceCents: null, currency: 'eur' })
+                  return
+                }
+                const next = Number(raw)
+                updateDraft({
+                  priceCents:
+                    Number.isFinite(next) && next > 0 ? Math.floor(next) : null,
+                  currency: 'eur',
+                })
+              }}
+            />
+            <small className="muted">{t('publishers.course.priceHint')}</small>
           </label>
           <label className="publisher-field publisher-full">
             {t('publishers.course.description')}
