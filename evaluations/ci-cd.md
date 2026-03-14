@@ -18,6 +18,7 @@ Criteria:
 - Deploy jobs validate staging environment contract before deployment.
 - Staging deployment requires `pnpm validate:deploy-env -- --target staging` to pass.
 - Staging deployment requires Stripe staging secrets and syncs hosted Worker Stripe secrets before API deploy.
+- The repo-managed API Worker Wrangler config enables Cloudflare observability so hosted staging failures can be inspected in dashboard logs and traces after deploy.
 
 ## EVAL-PLATFORM-CICD-003: Manual production deployment and rollback
 
@@ -30,6 +31,7 @@ Criteria:
 - Web deploy targets Cloudflare Pages project `course-web`.
 - Production deployment requires `pnpm validate:deploy-env -- --target production` to pass.
 - Production deployment requires Stripe production secrets and syncs hosted Worker Stripe secrets before API deploy.
+- The repo-managed API Worker Wrangler config enables Cloudflare observability for hosted production debugging parity.
 
 ## EVAL-PLATFORM-CICD-004: Monorepo-aware deploy behavior
 
