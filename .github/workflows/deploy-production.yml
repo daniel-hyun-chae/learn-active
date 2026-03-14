@@ -103,6 +103,11 @@ jobs:
           STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY_PROD }}
         run: pnpm --filter @app/api deploy:worker:prod -- --var "SUPABASE_URL:${SUPABASE_URL}" --var "STRIPE_PUBLISHABLE_KEY:${STRIPE_PUBLISHABLE_KEY}"
 
+      - name: Verify production API health after deploy
+        env:
+          API_URL_PROD: ${{ secrets.API_URL_PROD }}
+        run: node scripts/verify-hosted-api-health.mjs --url "$API_URL_PROD" --env production
+
   deploy-web:
     needs: resolve-ref
     runs-on: ubuntu-24.04

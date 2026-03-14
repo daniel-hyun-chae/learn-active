@@ -119,6 +119,11 @@ jobs:
           STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY_STAGING }}
         run: pnpm --filter @app/api deploy:worker:staging -- --var "SUPABASE_URL:${SUPABASE_URL}" --var "STRIPE_PUBLISHABLE_KEY:${STRIPE_PUBLISHABLE_KEY}"
 
+      - name: Verify staging API health after deploy
+        env:
+          API_URL_STAGING: ${{ secrets.API_URL_STAGING }}
+        run: node scripts/verify-hosted-api-health.mjs --url "$API_URL_STAGING" --env staging
+
   deploy-web:
     needs: detect-changes
     if: needs.detect-changes.outputs.web_changed == 'true'

@@ -56,6 +56,8 @@ test('staging deployment workflow wiring @eval(EVAL-PLATFORM-CICD-002,EVAL-PLATF
   assert.ok(workflow.includes('Sync Stripe Worker secrets to staging'))
   assert.ok(workflow.includes('wrangler secret put STRIPE_SECRET_KEY'))
   assert.ok(workflow.includes('wrangler secret put STRIPE_WEBHOOK_SECRET'))
+  assert.ok(workflow.includes('Verify staging API health after deploy'))
+  assert.ok(workflow.includes('verify-hosted-api-health.mjs'))
   assert.ok(workflow.includes('Verify built web GraphQL endpoint for staging'))
   assert.ok(workflow.includes('verify-web-build-endpoint.mjs'))
   assert.ok(workflow.includes('VITE_APP_ENV: staging'))
@@ -85,6 +87,8 @@ test('production deploy and rollback workflow wiring @eval(EVAL-PLATFORM-CICD-00
   assert.ok(workflow.includes('Sync Stripe Worker secrets to production'))
   assert.ok(workflow.includes('wrangler secret put STRIPE_SECRET_KEY'))
   assert.ok(workflow.includes('wrangler secret put STRIPE_WEBHOOK_SECRET'))
+  assert.ok(workflow.includes('Verify production API health after deploy'))
+  assert.ok(workflow.includes('verify-hosted-api-health.mjs'))
   assert.ok(
     workflow.includes('Verify built web GraphQL endpoint for production'),
   )
@@ -92,6 +96,7 @@ test('production deploy and rollback workflow wiring @eval(EVAL-PLATFORM-CICD-00
   assert.ok(workflow.includes('VITE_APP_ENV: production'))
   assert.ok(apiPackage.includes('deploy:worker:prod'))
   assert.ok(apiPackage.includes('--name course-api'))
+  assert.ok(apiPackage.includes('--keep-vars'))
   assert.ok(webPackage.includes('deploy:pages:prod'))
   assert.ok(webPackage.includes('--project-name course-web'))
 })
@@ -207,6 +212,46 @@ test('built web endpoint verification script validates compiled artifacts @eval(
         message: /Expected endpoint was not found/,
       },
     )
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true })
+  }
+})
+
+test('hosted api health verification script validates deployed worker responses @eval(EVAL-PLATFORM-CICD-002,EVAL-PLATFORM-CICD-003)', () => {
+  const script = path.join(root, 'scripts', 'verify-hosted-api-health.mjs')
+  const tempRoot = fs.mkdtempSync(
+    path.join(root, '.tmp-verify-hosted-api-health-'),
+  )
+  const mockFile = path.join(tempRoot, 'mock-loader.cjs')
+
+  try {
+    fs.writeFileSync(
+      mockFile,
+      `global.fetch = async () => new Response(null, { status: 204, headers: { 'access-control-allow-origin': '*' } });\n`,
+      'utf8',
+    )
+
+    const okOutput = execFileSync(
+      process.execPath,
+      [
+        script,
+        '--url',
+        'https://course-api-staging.example.workers.dev/graphql',
+        '--env',
+        'staging',
+      ],
+      {
+        cwd: root,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          NODE_OPTIONS: `--require ${mockFile}`,
+        },
+      },
+    )
+
+    assert.ok(okOutput.includes('staging preflight status 204'))
+    assert.ok(okOutput.includes('Access-Control-Allow-Origin'))
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true })
   }
