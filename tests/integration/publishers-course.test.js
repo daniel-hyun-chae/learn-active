@@ -9,7 +9,7 @@ function read(file) {
   return fs.readFileSync(path.join(root, file), 'utf8')
 }
 
-test('publisher workflow wiring @eval(EVAL-PUBLISHERS-COURSE-001,EVAL-PUBLISHERS-COURSE-003,EVAL-PUBLISHERS-COURSE-004)', () => {
+test('publisher workflow wiring @eval(EVAL-PUBLISHERS-COURSE-001,EVAL-PUBLISHERS-COURSE-003,EVAL-PUBLISHERS-COURSE-004,EVAL-PUBLISHERS-COURSE-007)', () => {
   const publishRoute = read('apps/web/src/routes/publish.tsx')
   const publishCourseRoute = read('apps/web/src/routes/publish.$courseId.tsx')
   const publisherHome = read(
@@ -34,9 +34,16 @@ test('publisher workflow wiring @eval(EVAL-PUBLISHERS-COURSE-001,EVAL-PUBLISHERS
   )
   assert.ok(publishCourseRoute.includes('PublisherHome'))
   assert.ok(publishCourseRoute.includes('publisher-course-missing'))
+  assert.ok(publishCourseRoute.includes('priceCents'))
+  assert.ok(publishCourseRoute.includes('stripePriceId'))
 
   assert.ok(!publisherHome.includes('publishers.course.language'))
   assert.ok(!publisherHome.includes('publisher-course-language'))
+  assert.ok(publisherHome.includes('publishers.course.priceEur'))
+  assert.ok(publisherHome.includes('publishers.course.priceHint'))
+  assert.ok(publisherHome.includes('publisher-course-price-cents'))
+  assert.ok(publisherHome.includes('priceCents'))
+  assert.ok(publisherHome.includes('stripePriceId'))
   assert.ok(publisherHome.includes('publishers.modules.add'))
   assert.ok(publisherHome.includes('publishers.lessons.add'))
   assert.ok(publisherHome.includes('publishers.exercise.template'))
@@ -59,6 +66,8 @@ test('publisher workflow wiring @eval(EVAL-PUBLISHERS-COURSE-001,EVAL-PUBLISHERS
 
   assert.ok(publisherUtils.includes('[blank]'))
   assert.ok(publisherUtils.includes('contentPages'))
+  assert.ok(publisherUtils.includes('priceCents'))
+  assert.ok(publisherUtils.includes('currency'))
   assert.ok(!publisherUtils.includes('language'))
 
   assert.ok(publisherHome.includes('seedSampleCourse'))

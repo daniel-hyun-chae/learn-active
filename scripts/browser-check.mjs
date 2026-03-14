@@ -62,10 +62,17 @@ export async function runBrowserChecks({
       waitUntil: 'networkidle',
       timeout: timeoutMs,
     })
-    await page.waitForSelector('[data-test="api-health"]', {
-      timeout: timeoutMs,
-      state: 'attached',
-    })
+
+    await Promise.any([
+      page.waitForSelector('[data-test="api-health"]', {
+        timeout: timeoutMs,
+        state: 'attached',
+      }),
+      page.waitForSelector('[data-test="auth-entry-page"]', {
+        timeout: timeoutMs,
+        state: 'attached',
+      }),
+    ])
 
     await page.goto(new URL(unknownPath, baseUrl).toString(), {
       waitUntil: 'networkidle',

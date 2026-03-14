@@ -30,7 +30,11 @@ Criteria:
 Goal: Document and template runtime configuration for containerized startup.
 Criteria:
 
-- `.env.example` exists and lists database, Supabase, and GraphQL endpoint variables.
+- `.env.example` exists and lists database, Supabase, GraphQL endpoint, and local Stripe bootstrap variables.
 - `README.md` documents the canonical local startup flow (`pnpm db:up` then `pnpm dev`) and notes `.env` usage.
+- `README.md` documents a repo-local cleanup command for orphaned local dev-stack processes.
+- The cleanup command targets both known dev-stack processes and processes still bound to the standard local API/web ports.
 - Shared config reads `GRAPHQL_ENDPOINT` and `VITE_GRAPHQL_ENDPOINT` when present.
 - A startup setup script (`pnpm setup`) and verification script (`pnpm verify:setup`) exist and are documented.
+- `README.md` documents that local Stripe webhook forwarding can auto-start during `pnpm dev` when Stripe test-mode keys are configured.
+- Devcontainer and OpenCode setup use repo-local governance (`AGENTS.md`, `opencode.json`, `.opencode/`) without depending on host global OpenCode configuration or session backup flows.

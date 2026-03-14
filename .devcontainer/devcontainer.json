@@ -16,15 +16,15 @@
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   },
-  "postCreateCommand": "corepack prepare pnpm@9.12.2 --activate && pnpm install && sh scripts/devcontainer-install-opencode.sh && PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright pnpm exec playwright install chromium",
-  "postStartCommand": "sh -lc 'if [ ! -d node_modules/.pnpm ]; then pnpm install; fi;'",
+  "postCreateCommand": "corepack prepare pnpm@9.12.2 --activate && pnpm install && sh scripts/devcontainer-install-opencode.sh && stripe --version && PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright pnpm exec playwright install chromium",
+  "postStartCommand": "sh -lc 'if [ ! -d node_modules/.pnpm ]; then pnpm install; fi'",
   "mounts": [
     "source=${localEnv:HOME}/.ssh,target=/home/node/.ssh,type=bind",
     "source=${localWorkspaceFolderBasename}-bashhistory,target=/commandhistory,type=volume",
     "source=${localEnv:HOME}/.netrc,target=/home/node/.netrc,type=bind",
     "source=${localWorkspaceFolderBasename}-opencode-data,target=/home/node/.local/share/opencode,type=volume",
+    "source=${localWorkspaceFolderBasename}-opencode-state,target=/home/node/.local/state/opencode,type=volume",
     "source=${localEnv:HOME}/.local/share/opencode/auth.json,target=/home/node/.local/share/opencode/auth.json,type=bind",
-    "source=${localEnv:HOME}/.config/opencode,target=/home/node/.config/opencode,type=bind",
     "source=${localWorkspaceFolderBasename}-ms-playwright,target=/home/node/.cache/ms-playwright,type=volume"
   ],
   "customizations": {

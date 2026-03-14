@@ -60,6 +60,9 @@ export const resources = {
       'catalog.title': 'Course catalog',
       'catalog.subtitle': 'Browse published courses and enroll when ready.',
       'catalog.enroll': 'Enroll',
+      'catalog.buy': 'Buy course',
+      'catalog.free': 'Free',
+      'catalog.price': 'Price: {{price}}',
       'catalog.open': 'Open details',
       'catalog.empty': 'No published courses are available yet.',
       'catalog.ownerLabel': 'Instructor: {{name}}',
@@ -67,6 +70,9 @@ export const resources = {
       'catalog.detail.enrolled': 'You are enrolled in this course.',
       'catalog.detail.loginToEnroll': 'Log in to enroll',
       'catalog.detail.enrollError': 'Unable to enroll right now.',
+      'catalog.detail.purchasePending':
+        'Payment received. Enrollment is syncing. This can take a few seconds.',
+      'catalog.detail.checkoutError': 'Unable to start checkout right now.',
       'myCourses.title': 'My courses',
       'myCourses.subtitle': 'Continue where you left off.',
       'myCourses.version': 'Version {{version}}',
@@ -157,6 +163,9 @@ export const resources = {
       'publishers.course.untitled': 'Untitled course',
       'publishers.course.details': 'Course details',
       'publishers.course.title': 'Title',
+      'publishers.course.priceEur': 'Price (EUR cents)',
+      'publishers.course.priceHint':
+        'Leave empty or 0 for free. Any positive value enables paid checkout.',
       'publishers.course.description': 'Description',
       'publishers.structure.title': 'Course structure',
       'publishers.structure.course': 'Course',
@@ -244,6 +253,21 @@ export const resources = {
       'mobile.learners.error': 'We could not load courses.',
       'mobile.learners.errorDetails': 'Check your connection and try again.',
       'mobile.learners.retry': 'Retry',
+      'mobile.learners.buy': 'Buy course',
+      'mobile.learners.enrollFree': 'Enroll for free',
+      'mobile.learners.pending': 'Waiting for enrollment confirmation...',
+      'mobile.learners.purchaseCancelled': 'Purchase was cancelled.',
+      'mobile.learners.purchaseFailed': 'Unable to start checkout.',
+      'mobile.learners.purchaseTimeout':
+        'Payment is processing. Pull to refresh in a moment.',
+      'purchase.success.title': 'Purchase processing',
+      'purchase.success.subtitle':
+        'Please wait while we confirm payment and activate enrollment.',
+      'purchase.success.enrolled':
+        'Enrollment confirmed. Your course is ready.',
+      'purchase.success.openMyCourses': 'Open My courses',
+      'purchase.success.noCourse':
+        'Missing course context for purchase status.',
     },
   },
 } as const

@@ -4,6 +4,7 @@ import type {
   CourseVersionDiffRecord,
   CourseVersionHistoryRecord,
   EnrollmentRecord,
+  PaymentRecord,
   PublicCourseRecord,
   PublisherCourseRecord,
 } from './model.js'
@@ -15,6 +16,9 @@ type CourseIdentity = {
   id: string
   ownerId: string
   slug: string
+  priceCents: number | null
+  currency: string
+  stripePriceId: string | null
 }
 
 type CourseVersion = {
@@ -33,11 +37,15 @@ type CourseVersion = {
 }
 
 type EnrollmentRow = EnrollmentRecord
+type PaymentRow = PaymentRecord
 
 type CourseWriteRow = {
   id: string
   title: string
   description: string
+  priceCents: number | null
+  currency: string
+  stripePriceId: string | null
   content: { modules: PublisherCourseRecord['content']['modules'] }
 }
 
@@ -47,8 +55,27 @@ export type CourseRepository = {
     email: string | null
   }) => Promise<{ ownerId: string }>
   listPublicCourses: () => Promise<PublicCourseRecord[]>
+  getPublicCourseById: (id: string) => Promise<PublicCourseRecord | null>
   getPublicCourseBySlug: (slug: string) => Promise<PublicCourseRecord | null>
+  getEnrollmentForUserCourse: (args: {
+    userId: string
+    courseId: string
+  }) => Promise<EnrollmentRecord | null>
   enrollInCourse: (args: {
+    userId: string
+    courseId: string
+  }) => Promise<EnrollmentRecord>
+  listMyPayments: (args: { userId: string }) => Promise<PaymentRecord[]>
+  recordStripePayment: (args: {
+    userId: string
+    courseId: string
+    stripeSessionId: string
+    stripePaymentIntentId: string | null
+    amountCents: number
+    currency: string
+    status: string
+  }) => Promise<PaymentRecord>
+  ensureEnrollmentForPaidCourse: (args: {
     userId: string
     courseId: string
   }) => Promise<EnrollmentRecord>
@@ -143,6 +170,7 @@ type MemoryState = {
   versions: Map<string, CourseVersion>
   publicationByCourse: Map<string, string>
   enrollments: Map<string, EnrollmentRow>
+  paymentsBySession: Map<string, PaymentRow>
 }
 
 function buildInitialState(): MemoryState {
@@ -152,6 +180,7 @@ function buildInitialState(): MemoryState {
     versions: new Map(),
     publicationByCourse: new Map(),
     enrollments: new Map(),
+    paymentsBySession: new Map(),
   }
 
   const courseId = seedCourseRow.id
@@ -162,6 +191,9 @@ function buildInitialState(): MemoryState {
     id: courseId,
     ownerId: seedCourseRow.ownerId,
     slug: `${slugify(seedCourseRow.title)}-seed`,
+    priceCents: null,
+    currency: 'eur',
+    stripePriceId: null,
   })
   state.versions.set(versionId, {
     id: versionId,
@@ -259,6 +291,9 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
       courseId: course.id,
       slug: course.slug,
       ownerId: course.ownerId,
+      priceCents: course.priceCents,
+      currency: course.currency,
+      stripePriceId: course.stripePriceId,
       versionId: version.id,
       version: version.version,
       status: version.status,
@@ -359,10 +394,37 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
           slug: course.slug,
           title: published.title,
           description: published.description,
+          priceCents: course.priceCents,
+          currency: course.currency,
+          stripePriceId: course.stripePriceId,
+          isPaid:
+            typeof course.priceCents === 'number' && course.priceCents > 0,
           ownerDisplayName: undefined,
         })
       }
       return rows.sort((a, b) => a.title.localeCompare(b.title))
+    },
+
+    async getPublicCourseById(id) {
+      const course = state.courses.get(id)
+      if (!course) {
+        return null
+      }
+      const published = publishedForCourse(course.id)
+      if (!published) {
+        return null
+      }
+      return {
+        id: course.id,
+        slug: course.slug,
+        title: published.title,
+        description: published.description,
+        priceCents: course.priceCents,
+        currency: course.currency,
+        stripePriceId: course.stripePriceId,
+        isPaid: typeof course.priceCents === 'number' && course.priceCents > 0,
+        ownerDisplayName: undefined,
+      }
     },
 
     async getPublicCourseBySlug(slug) {
@@ -381,8 +443,18 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
         slug: course.slug,
         title: published.title,
         description: published.description,
+        priceCents: course.priceCents,
+        currency: course.currency,
+        stripePriceId: course.stripePriceId,
+        isPaid: typeof course.priceCents === 'number' && course.priceCents > 0,
         ownerDisplayName: undefined,
       }
+    },
+
+    async getEnrollmentForUserCourse({ userId, courseId }) {
+      const key = `${userId}:${courseId}`
+      const enrollment = state.enrollments.get(key)
+      return enrollment ? clone(enrollment) : null
     },
 
     async enrollInCourse({ userId, courseId }) {
@@ -403,6 +475,46 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
       }
       state.enrollments.set(key, enrollment)
       return clone(enrollment)
+    },
+
+    async listMyPayments({ userId }) {
+      return Array.from(state.paymentsBySession.values())
+        .filter((payment) => payment.userId === userId)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .map((payment) => clone(payment))
+    },
+
+    async recordStripePayment({
+      userId,
+      courseId,
+      stripeSessionId,
+      stripePaymentIntentId,
+      amountCents,
+      currency,
+      status,
+    }) {
+      const existing = state.paymentsBySession.get(stripeSessionId)
+      if (existing) {
+        return clone(existing)
+      }
+
+      const payment: PaymentRow = {
+        id: randomUUID(),
+        userId,
+        courseId,
+        stripeSessionId,
+        stripePaymentIntentId,
+        amountCents,
+        currency,
+        status,
+        createdAt: nowIso(),
+      }
+      state.paymentsBySession.set(stripeSessionId, payment)
+      return clone(payment)
+    },
+
+    async ensureEnrollmentForPaidCourse({ userId, courseId }) {
+      return this.enrollInCourse({ userId, courseId })
     },
 
     async listMyCourses({ userId }) {
@@ -497,6 +609,9 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
           id: row.id,
           ownerId,
           slug,
+          priceCents: row.priceCents,
+          currency: row.currency,
+          stripePriceId: row.stripePriceId,
         }
         state.courses.set(identity.id, identity)
 
@@ -521,6 +636,11 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
       if (existingCourse.ownerId !== ownerId) {
         throw new Error('Course is not editable by current publisher.')
       }
+
+      existingCourse.priceCents = row.priceCents
+      existingCourse.currency = row.currency
+      existingCourse.stripePriceId = row.stripePriceId
+      state.courses.set(existingCourse.id, existingCourse)
 
       const draft = latestDraftForCourse(existingCourse.id)
       const target = draft ?? {

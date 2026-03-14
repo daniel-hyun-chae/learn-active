@@ -2,11 +2,18 @@ import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import net from 'node:net'
 import { fileURLToPath } from 'node:url'
+import {
+  extractStripeWebhookSecret,
+  loadLocalRuntimeEnv,
+  parseEnvAssignments,
+  shouldAutoStartStripeListener,
+} from './lib/local-runtime-env.mjs'
 
 const pnpmCmd = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
 const routeTreeScript = fileURLToPath(
   new URL('./verify-route-tree.mjs', import.meta.url),
 )
+const repoRoot = fileURLToPath(new URL('..', import.meta.url))
 const apiAppDir = fileURLToPath(new URL('../apps/api', import.meta.url))
 const webAppDir = fileURLToPath(new URL('../apps/web', import.meta.url))
 
@@ -80,31 +87,6 @@ function runAndWait(command, args, options = {}) {
   })
 }
 
-function parseEnvAssignments(rawText) {
-  const values = {}
-  for (const line of rawText.split(/\r?\n/)) {
-    const trimmed = line.trim()
-    if (!trimmed || !trimmed.includes('=')) {
-      continue
-    }
-
-    const separatorIndex = trimmed.indexOf('=')
-    const key = trimmed.slice(0, separatorIndex).trim()
-    if (!/^[A-Z0-9_]+$/.test(key)) {
-      continue
-    }
-
-    let value = trimmed.slice(separatorIndex + 1).trim()
-    if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
-      value = value.slice(1, -1)
-    }
-
-    values[key] = value
-  }
-
-  return values
-}
-
 function pickConfiguredValue(...candidates) {
   for (const candidate of candidates) {
     if (typeof candidate !== 'string') {
@@ -119,12 +101,13 @@ function pickConfiguredValue(...candidates) {
 }
 
 function resolveSupabaseWebRuntime() {
+  const runtimeEnv = loadLocalRuntimeEnv(repoRoot, process.env)
   const configuredUrl = pickConfiguredValue(
-    process.env.VITE_SUPABASE_URL,
-    process.env.SUPABASE_URL,
+    runtimeEnv.VITE_SUPABASE_URL,
+    runtimeEnv.SUPABASE_URL,
   )
   const configuredPublishableKey = pickConfiguredValue(
-    process.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+    runtimeEnv.VITE_SUPABASE_PUBLISHABLE_KEY,
   )
 
   if (configuredUrl && configuredPublishableKey) {
@@ -143,7 +126,7 @@ function resolveSupabaseWebRuntime() {
       timeout: 30000,
       maxBuffer: 1024 * 1024,
       shell: process.platform === 'win32',
-      env: { ...process.env },
+      env: { ...runtimeEnv },
     },
   )
 
@@ -293,11 +276,37 @@ function shutdown(processes) {
   }
 }
 
+async function waitForStripeWebhookSecret(monitored, timeoutMs = 15000) {
+  const start = Date.now()
+
+  while (Date.now() - start < timeoutMs) {
+    const webhookSecret = extractStripeWebhookSecret(
+      monitored.getRecentOutput(),
+    )
+    if (webhookSecret) {
+      return webhookSecret
+    }
+
+    if (monitored.proc.exitCode !== null) {
+      break
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+
+  const details = monitored.getRecentOutput().trim()
+  const reason = details ? ` Output: ${details}` : ''
+  throw new Error(
+    `Stripe CLI did not provide a webhook secret in time.${reason}`,
+  )
+}
+
 console.log('[dev-stack] Starting API + web dev servers...')
+const runtimeEnv = loadLocalRuntimeEnv(repoRoot, process.env)
 const reserved = new Set()
-const preferredApiPort = Number(process.env.API_PORT ?? 4000)
-const preferredWebPort = Number(process.env.WEB_PORT ?? 4100)
-const dynamicDevPorts = process.env.DYNAMIC_DEV_PORTS === '1'
+const preferredApiPort = Number(runtimeEnv.API_PORT ?? 4000)
+const preferredWebPort = Number(runtimeEnv.WEB_PORT ?? 4100)
+const dynamicDevPorts = runtimeEnv.DYNAMIC_DEV_PORTS === '1'
 
 let apiPort
 let webPort
@@ -339,17 +348,50 @@ await runAndWait(process.execPath, [routeTreeScript], {
 })
 
 const effectiveDatabaseUrl = normalizeDatabaseUrlForDevcontainer(
-  process.env.DATABASE_URL,
+  runtimeEnv.DATABASE_URL,
 )
 const supabaseWebRuntime = resolveSupabaseWebRuntime()
 const apiSupabaseUrl = pickConfiguredValue(
-  process.env.SUPABASE_URL,
+  runtimeEnv.SUPABASE_URL,
   supabaseWebRuntime?.url,
 )
 
 if (supabaseWebRuntime) {
   console.log(
     `[dev-stack] Supabase auth runtime source: ${supabaseWebRuntime.source}`,
+  )
+}
+
+if (shouldAutoStartStripeListener(runtimeEnv)) {
+  const stripeForwardUrl = `http://127.0.0.1:${apiPort}/api/webhooks/stripe`
+  console.log(
+    `[dev-stack] Starting Stripe CLI webhook forwarder for ${stripeForwardUrl}`,
+  )
+
+  const stripeProcess = startMonitoredProcess(
+    'stripe',
+    'stripe',
+    [
+      '--api-key',
+      runtimeEnv.STRIPE_SECRET_KEY,
+      'listen',
+      '--forward-to',
+      stripeForwardUrl,
+    ],
+    {
+      shell: process.platform === 'win32',
+      env: {
+        ...runtimeEnv,
+        STRIPE_API_KEY: runtimeEnv.STRIPE_SECRET_KEY,
+      },
+    },
+  )
+  processes.push(stripeProcess.proc)
+
+  runtimeEnv.STRIPE_WEBHOOK_SECRET =
+    await waitForStripeWebhookSecret(stripeProcess)
+  console.log(
+    '[dev-stack] Stripe webhook secret auto-configured from Stripe CLI',
   )
 }
 
@@ -369,14 +411,23 @@ const apiProcess = startMonitoredProcess(
     '--port',
     String(apiPort),
     ...(apiSupabaseUrl ? ['--var', `SUPABASE_URL:${apiSupabaseUrl}`] : []),
+    ...(runtimeEnv.STRIPE_SECRET_KEY
+      ? ['--var', `STRIPE_SECRET_KEY:${runtimeEnv.STRIPE_SECRET_KEY}`]
+      : []),
+    ...(runtimeEnv.STRIPE_PUBLISHABLE_KEY
+      ? ['--var', `STRIPE_PUBLISHABLE_KEY:${runtimeEnv.STRIPE_PUBLISHABLE_KEY}`]
+      : []),
+    ...(runtimeEnv.STRIPE_WEBHOOK_SECRET
+      ? ['--var', `STRIPE_WEBHOOK_SECRET:${runtimeEnv.STRIPE_WEBHOOK_SECRET}`]
+      : []),
   ],
   {
     cwd: apiAppDir,
     shell: process.platform === 'win32',
     env: {
-      ...process.env,
+      ...runtimeEnv,
       PORT: String(apiPort),
-      APP_ENV: process.env.APP_ENV ?? 'local',
+      APP_ENV: runtimeEnv.APP_ENV ?? 'local',
       ...(effectiveDatabaseUrl ? { DATABASE_URL: effectiveDatabaseUrl } : {}),
     },
   },
@@ -391,17 +442,17 @@ const webProcess = startMonitoredProcess(
     cwd: webAppDir,
     shell: process.platform === 'win32',
     env: {
-      ...process.env,
+      ...runtimeEnv,
       PORT: String(webPort),
       GRAPHQL_ENDPOINT: apiEndpoint,
       VITE_GRAPHQL_ENDPOINT: apiEndpoint,
       ...(supabaseWebRuntime
         ? {
-            SUPABASE_URL: process.env.SUPABASE_URL ?? supabaseWebRuntime.url,
+            SUPABASE_URL: runtimeEnv.SUPABASE_URL ?? supabaseWebRuntime.url,
             VITE_SUPABASE_URL:
-              process.env.VITE_SUPABASE_URL ?? supabaseWebRuntime.url,
+              runtimeEnv.VITE_SUPABASE_URL ?? supabaseWebRuntime.url,
             VITE_SUPABASE_PUBLISHABLE_KEY:
-              process.env.VITE_SUPABASE_PUBLISHABLE_KEY ??
+              runtimeEnv.VITE_SUPABASE_PUBLISHABLE_KEY ??
               supabaseWebRuntime.publishableKey,
           }
         : {}),

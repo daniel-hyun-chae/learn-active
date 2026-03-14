@@ -6,11 +6,13 @@ import {
   Text,
   View,
 } from 'react-native'
+import * as Linking from 'expo-linking'
+import * as WebBrowser from 'expo-web-browser'
 import { useTranslation } from 'react-i18next'
 import { tokens } from '@app/shared-tokens'
 import { fetchGraphQL } from '../../shared/api/graphql'
 import { useMobileAuth } from '../auth/MobileAuthProvider'
-import type { Course, Lesson } from './course/types'
+import type { CatalogCourse, Course, Lesson } from './course/types'
 import { LessonView } from './course/LessonView'
 import { LearnerHome } from './home/LearnerHome'
 
@@ -23,6 +25,9 @@ const coursesQuery = `query Courses {
     id
     title
     description
+    priceCents
+    currency
+    isPaid
     modules {
       id
       title
@@ -77,6 +82,15 @@ const coursesQuery = `query Courses {
       }
     }
   }
+  publicCourses {
+    id
+    slug
+    title
+    description
+    priceCents
+    currency
+    isPaid
+  }
 }`
 
 function findLesson(courses: Course[], courseId: string, lessonId: string) {
@@ -91,16 +105,27 @@ export function LearnerMobileApp() {
   const { t } = useTranslation()
   const auth = useMobileAuth()
   const [courses, setCourses] = useState<Course[]>([])
+  const [catalogCourses, setCatalogCourses] = useState<CatalogCourse[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [purchaseError, setPurchaseError] = useState<string | null>(null)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  const [pendingCourseId, setPendingCourseId] = useState<string | null>(null)
+  const [purchasingCourseId, setPurchasingCourseId] = useState<string | null>(
+    null,
+  )
   const [screen, setScreen] = useState<ScreenState>({ name: 'home' })
 
   const loadCourses = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const data = await fetchGraphQL<{ courses: Course[] }>(coursesQuery)
+      const data = await fetchGraphQL<{
+        courses: Course[]
+        publicCourses: CatalogCourse[]
+      }>(coursesQuery)
       setCourses(data.courses)
+      setCatalogCourses(data.publicCourses)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -117,7 +142,143 @@ export function LearnerMobileApp() {
     void loadCourses()
   }, [loadCourses])
 
-  if (loading && courses.length === 0) {
+  const pollEnrollmentStatus = useCallback(
+    async (courseId: string) => {
+      setPendingCourseId(courseId)
+      setStatusMessage(t('mobile.learners.pending'))
+      setPurchaseError(null)
+
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        try {
+          const data = await fetchGraphQL<{
+            courseEnrollmentStatus: {
+              enrolled: boolean
+              status?: string | null
+            }
+          }>(
+            `query CourseEnrollmentStatus($courseId: String!) {
+              courseEnrollmentStatus(courseId: $courseId) {
+                enrolled
+                status
+              }
+            }`,
+            { courseId },
+          )
+
+          if (data.courseEnrollmentStatus.enrolled) {
+            setPendingCourseId(null)
+            setStatusMessage(t('purchase.success.enrolled'))
+            await loadCourses()
+            return
+          }
+        } catch {
+          setPurchaseError(t('mobile.learners.purchaseFailed'))
+          setPendingCourseId(null)
+          return
+        }
+
+        await new Promise((resolve) => {
+          setTimeout(resolve, 2000)
+        })
+      }
+
+      setPendingCourseId(null)
+      setStatusMessage(t('mobile.learners.purchaseTimeout'))
+    },
+    [loadCourses, t],
+  )
+
+  useEffect(() => {
+    function handleUrl(url: string) {
+      const parsed = Linking.parse(url)
+      const path = [parsed.hostname, parsed.path]
+        .filter(Boolean)
+        .join('/')
+        .replace(/^\/+/, '')
+      const courseId =
+        typeof parsed.queryParams?.courseId === 'string'
+          ? parsed.queryParams.courseId
+          : null
+
+      if (path === 'purchase/success' && courseId) {
+        void pollEnrollmentStatus(courseId)
+        return
+      }
+
+      if (path === 'purchase/cancel') {
+        setPendingCourseId(null)
+        setStatusMessage(t('mobile.learners.purchaseCancelled'))
+      }
+    }
+
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      handleUrl(url)
+    })
+
+    void Linking.getInitialURL().then((url) => {
+      if (url) {
+        handleUrl(url)
+      }
+    })
+
+    return () => {
+      subscription.remove()
+    }
+  }, [pollEnrollmentStatus, t])
+
+  const handleEnrollFree = useCallback(
+    async (courseId: string) => {
+      setPurchaseError(null)
+      setStatusMessage(null)
+      try {
+        await fetchGraphQL<{ enrollInCourse: { id: string } }>(
+          `mutation EnrollInCourse($courseId: String!) {
+            enrollInCourse(courseId: $courseId) {
+              id
+            }
+          }`,
+          { courseId },
+        )
+        await loadCourses()
+      } catch {
+        setPurchaseError(t('catalog.detail.enrollError'))
+      }
+    },
+    [loadCourses, t],
+  )
+
+  const handleBuyCourse = useCallback(
+    async (courseId: string) => {
+      setPurchasingCourseId(courseId)
+      setPurchaseError(null)
+      setStatusMessage(null)
+      try {
+        const data = await fetchGraphQL<{
+          createCourseCheckoutSession: { url: string; sessionId: string }
+        }>(
+          `mutation CreateCourseCheckoutSession($courseId: String!, $channel: CheckoutChannel!) {
+            createCourseCheckoutSession(courseId: $courseId, channel: $channel) {
+              url
+              sessionId
+            }
+          }`,
+          {
+            courseId,
+            channel: 'MOBILE',
+          },
+        )
+
+        await WebBrowser.openBrowserAsync(data.createCourseCheckoutSession.url)
+      } catch {
+        setPurchaseError(t('mobile.learners.purchaseFailed'))
+      } finally {
+        setPurchasingCourseId(null)
+      }
+    },
+    [t],
+  )
+
+  if (loading && courses.length === 0 && catalogCourses.length === 0) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator color={tokens.color.primary} />
@@ -188,9 +349,16 @@ export function LearnerMobileApp() {
 
       <LearnerHome
         courses={courses}
+        catalogCourses={catalogCourses}
         loading={loading}
         error={error}
+        purchaseError={purchaseError}
+        statusMessage={statusMessage}
+        pendingCourseId={pendingCourseId}
+        purchasingCourseId={purchasingCourseId}
         onRetry={loadCourses}
+        onEnrollFree={handleEnrollFree}
+        onBuyCourse={handleBuyCourse}
         onSelectLesson={(courseId, lessonId) =>
           setScreen({ name: 'lesson', courseId, lessonId })
         }

@@ -70,3 +70,35 @@ Criteria:
 - Learner course content resolution uses the currently published version for the enrolled course identity.
 - Published versions remain available to unenrolled learners through public catalog/detail views.
 - Draft and archived versions are not directly exposed in learner/public query paths.
+
+## EVAL-LEARNERS-COURSE-008: Paid checkout purchase loop
+
+Goal: Learners can complete a paid purchase flow from catalog/detail into Stripe Checkout and receive enrollment.
+Criteria:
+
+- Published paid courses render price and buy CTA in catalog and course detail views.
+- Free courses render free labeling and continue using direct enrollment without Stripe.
+- Buy CTA creates a Stripe Checkout session and redirects to Stripe-hosted checkout.
+- Hosted checkout uses a deterministic card-payment path for the standard learner web flow.
+- Checkout metadata carries both `user_id` and `course_id`.
+
+## EVAL-LEARNERS-COURSE-009: Webhook-verified enrollment and idempotency
+
+Goal: Enrollment for paid courses is created only through verified Stripe webhook processing and remains idempotent.
+Criteria:
+
+- Webhook endpoint verifies Stripe signature before accepting checkout completion events.
+- Successful paid checkout records a payment audit entry and creates learner enrollment.
+- Checkout completion supports both immediate paid completion and async payment success events.
+- Duplicate webhook delivery does not create duplicate payments or duplicate enrollments.
+- Checkout session creation is blocked for actively enrolled learners.
+
+## EVAL-LEARNERS-COURSE-010: Purchase pending UX and mobile deep-link return
+
+Goal: Learners receive clear purchase-pending feedback while enrollment sync completes on web and mobile.
+Criteria:
+
+- Web purchase success route shows pending state and polls enrollment status by course.
+- Mobile purchase flow returns via deep link and polls enrollment status by course.
+- Mobile auth redirect handling ignores non-auth purchase deep links.
+- Once enrollment is confirmed, learners can access the course from My Courses / learner home flow.

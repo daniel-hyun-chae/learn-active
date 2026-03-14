@@ -3,6 +3,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
+const crypto = require('node:crypto')
 const { spawn, spawnSync } = require('node:child_process')
 const http = require('node:http')
 const https = require('node:https')
@@ -12,12 +13,117 @@ const { createAuthStorageState } = require('./auth-storage-state')
 
 selectors.setTestIdAttribute('data-test')
 
+const repoRoot = path.resolve(__dirname, '..', '..')
+
+function loadLocalRuntimeEnv(rootDir) {
+  const loaded = {}
+
+  for (const fileName of ['.env', '.env.local']) {
+    const filePath = path.join(rootDir, fileName)
+    if (!fs.existsSync(filePath)) {
+      continue
+    }
+
+    Object.assign(
+      loaded,
+      parseEnvAssignments(fs.readFileSync(filePath, 'utf8')),
+    )
+  }
+
+  return {
+    ...loaded,
+    ...process.env,
+  }
+}
+
+const localRuntimeEnv = loadLocalRuntimeEnv(repoRoot)
+const stripeSecretKey = localRuntimeEnv.STRIPE_SECRET_KEY?.trim() ?? ''
+const stripePublishableKey =
+  localRuntimeEnv.STRIPE_PUBLISHABLE_KEY?.trim() ?? ''
+let stripeWebhookSecret = localRuntimeEnv.STRIPE_WEBHOOK_SECRET?.trim() ?? ''
+let hasStripeE2EConfig = Boolean(stripeSecretKey && stripeWebhookSecret)
+let stripeListener = null
+
 function run(command, args, options = {}) {
   return spawn(command, args, {
     stdio: 'inherit',
     detached: process.platform !== 'win32',
     ...options,
   })
+}
+
+function shouldAutoStartStripeListener() {
+  const autostart = (localRuntimeEnv.STRIPE_CLI_WEBHOOK_AUTOSTART ?? '1')
+    .trim()
+    .toLowerCase()
+
+  if (autostart === '0' || autostart === 'false' || autostart === 'no') {
+    return false
+  }
+
+  return Boolean(stripeSecretKey)
+}
+
+function extractStripeWebhookSecret(rawText) {
+  const match = rawText.match(/\bwhsec_[A-Za-z0-9]+\b/)
+  return match?.[0] ?? null
+}
+
+function startStripeListener(forwardUrl) {
+  const stripeCmd = process.platform === 'win32' ? 'stripe.cmd' : 'stripe'
+  const output = []
+  const proc = spawn(
+    stripeCmd,
+    ['--api-key', stripeSecretKey, 'listen', '--forward-to', forwardUrl],
+    {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: process.platform === 'win32',
+      env: {
+        ...process.env,
+        ...localRuntimeEnv,
+        STRIPE_API_KEY: stripeSecretKey,
+      },
+    },
+  )
+
+  const capture = (chunk) => {
+    output.push(String(chunk))
+    if (output.length > 200) {
+      output.shift()
+    }
+  }
+
+  proc.stdout?.on('data', capture)
+  proc.stderr?.on('data', capture)
+
+  return {
+    proc,
+    getRecentOutput() {
+      return output.join('')
+    },
+  }
+}
+
+async function waitForStripeWebhookSecret(listener, timeoutMs = 15000) {
+  const start = Date.now()
+
+  while (Date.now() - start < timeoutMs) {
+    const secret = extractStripeWebhookSecret(listener.getRecentOutput())
+    if (secret) {
+      return secret
+    }
+
+    if (listener.proc.exitCode !== null) {
+      break
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+
+  const details = listener.getRecentOutput().trim()
+  throw new Error(
+    `Stripe CLI did not provide a webhook secret for e2e startup.${details ? ` Output: ${details}` : ''}`,
+  )
 }
 
 function forceStopDevProcesses() {
@@ -92,6 +198,215 @@ function extractAccessTokenFromStorageState(storageStatePath) {
   }
 
   return null
+}
+
+function decodeJwtPayload(token) {
+  const [, payload = ''] = token.split('.')
+  const normalized = payload.replace(/-/g, '+').replace(/_/g, '/')
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+  return JSON.parse(Buffer.from(padded, 'base64').toString('utf8'))
+}
+
+async function graphqlRequest({
+  token,
+  query,
+  variables,
+  origin = stack.baseUrl,
+}) {
+  const response = await httpRequest(
+    `http://localhost:${stack.apiPort}/graphql`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${token}`,
+        origin,
+      },
+      body: JSON.stringify({ query, variables }),
+    },
+  )
+
+  assert.equal(response.statusCode, 200, response.body)
+  const payload = JSON.parse(response.body)
+  assert.equal(
+    Array.isArray(payload.errors),
+    false,
+    payload.errors
+      ? JSON.stringify(payload.errors)
+      : 'unexpected GraphQL error array',
+  )
+  return payload.data
+}
+
+function futureCardExpiry() {
+  const now = new Date()
+  const month = String(((now.getMonth() + 1) % 12) + 1).padStart(2, '0')
+  const year = String((now.getFullYear() + 2) % 100).padStart(2, '0')
+  return `${month} / ${year}`
+}
+
+function stripeCheckoutScopes(page) {
+  return page.frames()
+}
+
+async function findVisibleStripeLocator(page, candidates, timeoutMs = 30000) {
+  const start = Date.now()
+
+  while (Date.now() - start < timeoutMs) {
+    for (const scope of stripeCheckoutScopes(page)) {
+      for (const candidate of candidates) {
+        const locator =
+          candidate.kind === 'placeholder'
+            ? scope.getByPlaceholder(candidate.value).first()
+            : candidate.kind === 'role'
+              ? scope.getByRole(candidate.role, candidate.options).first()
+              : scope.locator(candidate.value).first()
+
+        const count = await locator.count().catch(() => 0)
+        if (count < 1) {
+          continue
+        }
+
+        const visible = await locator.isVisible().catch(() => false)
+        if (!visible) {
+          continue
+        }
+
+        return locator
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+
+  const frameUrls = stripeCheckoutScopes(page)
+    .map((frame) => frame.url())
+    .filter(Boolean)
+    .join(', ')
+
+  throw new Error(
+    `Unable to locate Stripe Checkout field. Frames seen: ${frameUrls || 'none'}`,
+  )
+}
+
+async function fillStripeField(page, candidates, value, timeoutMs = 30000) {
+  const locator = await findVisibleStripeLocator(page, candidates, timeoutMs)
+  await locator.click().catch(() => undefined)
+  await locator.fill(value)
+}
+
+async function completeStripeHostedCheckout(page, options = {}) {
+  const { email = 'e2e-learner@example.test' } = options
+
+  await page.waitForURL(/checkout\.stripe\.com/, { timeout: 60000 })
+
+  await page.waitForLoadState('domcontentloaded')
+
+  const emailField = await findVisibleStripeLocator(
+    page,
+    [
+      { kind: 'selector', value: 'input[autocomplete="email"]' },
+      { kind: 'selector', value: 'input[name="email"]' },
+      { kind: 'placeholder', value: /email@example\.com/i },
+    ],
+    10000,
+  ).catch(() => null)
+  if (emailField) {
+    const currentValue = await emailField.inputValue().catch(() => '')
+    if (!currentValue) {
+      await emailField.click().catch(() => undefined)
+      await emailField.fill(email)
+    }
+  }
+
+  const cardAccordionButton = await findVisibleStripeLocator(
+    page,
+    [
+      { kind: 'selector', value: '[data-testid="card-accordion-item-button"]' },
+      {
+        kind: 'role',
+        role: 'button',
+        options: { name: /pay with card|card/i },
+      },
+    ],
+    10000,
+  ).catch(() => null)
+  if (cardAccordionButton) {
+    await cardAccordionButton.click().catch(() => undefined)
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  await fillStripeField(
+    page,
+    [
+      { kind: 'selector', value: 'input[autocomplete="cc-number"]' },
+      { kind: 'selector', value: 'input[name="cardNumber"]' },
+      { kind: 'selector', value: 'input[name="number"]' },
+      { kind: 'placeholder', value: /1234 1234 1234 1234/i },
+    ],
+    '4242424242424242',
+  )
+
+  await fillStripeField(
+    page,
+    [
+      { kind: 'selector', value: 'input[autocomplete="cc-exp"]' },
+      { kind: 'selector', value: 'input[name="cardExpiry"]' },
+      { kind: 'selector', value: 'input[name="expiry"]' },
+      { kind: 'placeholder', value: /MM\s*\/\s*YY/i },
+    ],
+    futureCardExpiry(),
+  )
+
+  await fillStripeField(
+    page,
+    [
+      { kind: 'selector', value: 'input[autocomplete="cc-csc"]' },
+      { kind: 'selector', value: 'input[name="cardCvc"]' },
+      { kind: 'selector', value: 'input[name="cvc"]' },
+      { kind: 'placeholder', value: /^CVC$/i },
+    ],
+    '123',
+  )
+
+  const nameField = await findVisibleStripeLocator(
+    page,
+    [
+      { kind: 'selector', value: 'input[autocomplete="cc-name"]' },
+      { kind: 'selector', value: 'input[name="name"]' },
+      { kind: 'placeholder', value: /Full name on card/i },
+      { kind: 'placeholder', value: /Name on card/i },
+    ],
+    5000,
+  ).catch(() => null)
+  if (nameField) {
+    await nameField.click().catch(() => undefined)
+    await nameField.fill('E2E Learner')
+  }
+
+  const payButton = await findVisibleStripeLocator(page, [
+    {
+      kind: 'selector',
+      value:
+        '[data-testid="hosted-payment-submit-button"], [data-test="hosted-payment-submit-button"], button[type="submit"]',
+    },
+    {
+      kind: 'role',
+      role: 'button',
+      options: { name: /pay|subscribe|complete|purchase/i },
+    },
+  ])
+  await payButton.click()
+}
+
+function signStripeWebhook(payload, secret) {
+  const timestamp = Math.floor(Date.now() / 1000)
+  const signature = crypto
+    .createHmac('sha256', secret)
+    .update(`${timestamp}.${payload}`)
+    .digest('hex')
+  return `t=${timestamp},v1=${signature}`
 }
 
 function resolveSupabaseRuntime() {
@@ -433,6 +748,14 @@ before(async () => {
   )
   stack.authStoragePath = path.join(stack.authStorageDir, 'storage-state.json')
 
+  if (shouldAutoStartStripeListener()) {
+    stripeListener = startStripeListener(
+      `http://127.0.0.1:${stack.apiPort}/api/webhooks/stripe`,
+    )
+    stripeWebhookSecret = await waitForStripeWebhookSecret(stripeListener)
+    hasStripeE2EConfig = Boolean(stripeSecretKey && stripeWebhookSecret)
+  }
+
   spawnSyncChecked(pnpmCmd, ['build'], {
     shell: process.platform === 'win32',
     env: {
@@ -457,14 +780,31 @@ before(async () => {
       String(stack.apiPort),
       '--var',
       `SUPABASE_URL:${supabaseRuntime.supabaseUrl}`,
+      ...(stripeSecretKey
+        ? ['--var', `STRIPE_SECRET_KEY:${stripeSecretKey}`]
+        : []),
+      ...(stripePublishableKey
+        ? ['--var', `STRIPE_PUBLISHABLE_KEY:${stripePublishableKey}`]
+        : []),
+      ...(stripeWebhookSecret
+        ? ['--var', `STRIPE_WEBHOOK_SECRET:${stripeWebhookSecret}`]
+        : []),
     ],
     {
       shell: process.platform === 'win32',
       env: {
         ...process.env,
+        ...localRuntimeEnv,
         PORT: String(stack.apiPort),
         APP_ENV: 'local',
         SUPABASE_URL: supabaseRuntime.supabaseUrl,
+        ...(stripeSecretKey ? { STRIPE_SECRET_KEY: stripeSecretKey } : {}),
+        ...(stripePublishableKey
+          ? { STRIPE_PUBLISHABLE_KEY: stripePublishableKey }
+          : {}),
+        ...(stripeWebhookSecret
+          ? { STRIPE_WEBHOOK_SECRET: stripeWebhookSecret }
+          : {}),
       },
     },
   )
@@ -485,6 +825,7 @@ before(async () => {
       shell: process.platform === 'win32',
       env: {
         ...process.env,
+        ...localRuntimeEnv,
         PORT: String(stack.webPort),
         GRAPHQL_ENDPOINT: `http://localhost:${stack.apiPort}/graphql`,
         VITE_GRAPHQL_ENDPOINT: `http://localhost:${stack.apiPort}/graphql`,
@@ -536,6 +877,12 @@ after(async () => {
   if (stack.authStorageDir) {
     fs.rmSync(stack.authStorageDir, { recursive: true, force: true })
   }
+
+  if (stripeListener?.proc) {
+    await stopProcess(stripeListener.proc)
+  }
+
+  forceStopDevProcesses()
 })
 
 test(
@@ -894,6 +1241,15 @@ test(
 
       await page.getByTestId('publisher-back').click()
       await waitForVisible(page, 'publisher-landing')
+      await page.waitForLoadState('networkidle').catch(() => undefined)
+      await page
+        .waitForResponse(
+          (response) =>
+            response.url().includes('/graphql') &&
+            response.request().method() === 'POST',
+          { timeout: 30000 },
+        )
+        .catch(() => undefined)
       const matchingCourseCard = page
         .locator('[data-test="publisher-course-card"]')
         .filter({ hasText: courseTitle })
@@ -945,7 +1301,485 @@ test(
     } finally {
       await context.close()
       await browser.close()
-      await ensureStackStopped()
+    }
+  },
+)
+
+test(
+  'paid course publication and enrollment flow @eval(EVAL-PUBLISHERS-COURSE-007,EVAL-LEARNERS-COURSE-008,EVAL-LEARNERS-COURSE-009)',
+  { timeout: 240000 },
+  async (t) => {
+    if (!hasStripeE2EConfig) {
+      t.skip(
+        'Stripe test credentials and webhook secret are not configured for e2e',
+      )
+      return
+    }
+
+    const publisherToken = extractAccessTokenFromStorageState(
+      stack.authStoragePath,
+    )
+    const unique = Date.now().toString(36)
+    const learnerStoragePath = path.join(
+      stack.authStorageDir,
+      `learner-${unique}-storage-state.json`,
+    )
+    const learnerEmail = `learner-${unique}@example.test`
+
+    await createAuthStorageState({
+      chromium,
+      baseUrl: stack.baseUrl,
+      storageStatePath: learnerStoragePath,
+      email: learnerEmail,
+      returnToPath: '/learn',
+      waitForTestId: 'auth-user-email',
+      waitForTestIdTimeoutMs: 90000,
+    })
+
+    const learnerToken = extractAccessTokenFromStorageState(learnerStoragePath)
+    const learnerClaims = decodeJwtPayload(learnerToken)
+    const learnerUserId = learnerClaims.sub
+    assert.ok(learnerUserId, 'learner access token should contain sub claim')
+
+    const saveData = await graphqlRequest({
+      token: publisherToken,
+      query: `mutation SaveCourse($input: CourseInput!) {
+        upsertCourse(input: $input) {
+          id
+          title
+          status
+          stripePriceId
+          priceCents
+          currency
+        }
+      }`,
+      variables: {
+        input: {
+          id: `course-${unique}`,
+          title: `Paid E2E ${unique}`,
+          description: `Paid publish and enroll flow ${unique}`,
+          priceCents: 50,
+          currency: 'eur',
+          modules: [
+            {
+              id: `module-${unique}`,
+              title: `Module ${unique}`,
+              order: 1,
+              lessons: [
+                {
+                  id: `lesson-${unique}`,
+                  title: `Lesson ${unique}`,
+                  order: 1,
+                  contents: [],
+                  contentPages: [],
+                  exercises: [],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    })
+
+    const savedCourse = saveData.upsertCourse
+    assert.equal(savedCourse.priceCents, 50)
+    assert.equal(savedCourse.currency, 'eur')
+    assert.ok(
+      savedCourse.stripePriceId,
+      'paid course should have stripe price id',
+    )
+
+    const publishData = await graphqlRequest({
+      token: publisherToken,
+      query: `mutation PublishCourse($courseId: String!) {
+        publishCourseDraft(courseId: $courseId) {
+          id
+          status
+          publishedAt
+        }
+      }`,
+      variables: { courseId: savedCourse.id },
+    })
+
+    assert.equal(publishData.publishCourseDraft.status, 'published')
+    assert.ok(publishData.publishCourseDraft.publishedAt)
+
+    const checkoutData = await graphqlRequest({
+      token: learnerToken,
+      query: `mutation CreateCourseCheckoutSession($courseId: String!, $channel: CheckoutChannel!) {
+        createCourseCheckoutSession(courseId: $courseId, channel: $channel) {
+          url
+          sessionId
+        }
+      }`,
+      variables: {
+        courseId: savedCourse.id,
+        channel: 'WEB',
+      },
+    })
+
+    const checkoutSession = checkoutData.createCourseCheckoutSession
+    assert.ok(checkoutSession.sessionId)
+    assert.ok(checkoutSession.url.startsWith('https://checkout.stripe.com/'))
+
+    const webhookPayload = JSON.stringify({
+      id: `evt_${unique}`,
+      type: 'checkout.session.completed',
+      data: {
+        object: {
+          id: checkoutSession.sessionId,
+          payment_intent: `pi_${unique}`,
+          payment_status: 'paid',
+          status: 'complete',
+          amount_total: 50,
+          currency: 'eur',
+          metadata: {
+            user_id: learnerUserId,
+            course_id: savedCourse.id,
+          },
+        },
+      },
+    })
+
+    const webhookResponse = await httpRequest(
+      `http://localhost:${stack.apiPort}/api/webhooks/stripe`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'stripe-signature': signStripeWebhook(
+            webhookPayload,
+            stripeWebhookSecret,
+          ),
+        },
+        body: webhookPayload,
+      },
+    )
+
+    assert.equal(webhookResponse.statusCode, 200, webhookResponse.body)
+
+    const enrollmentData = await graphqlRequest({
+      token: learnerToken,
+      query: `query EnrollmentStatus($courseId: String!) {
+        courseEnrollmentStatus(courseId: $courseId) {
+          enrolled
+          status
+        }
+        myPayments {
+          stripeSessionId
+          amountCents
+          currency
+          status
+          courseId
+        }
+      }`,
+      variables: { courseId: savedCourse.id },
+    })
+
+    assert.equal(enrollmentData.courseEnrollmentStatus.enrolled, true)
+    assert.equal(enrollmentData.courseEnrollmentStatus.status, 'active')
+    assert.equal(
+      enrollmentData.myPayments.some(
+        (payment) =>
+          payment.stripeSessionId === checkoutSession.sessionId &&
+          payment.courseId === savedCourse.id &&
+          payment.amountCents === 50 &&
+          payment.currency === 'eur' &&
+          payment.status === 'paid',
+      ),
+      true,
+    )
+  },
+)
+
+test(
+  'paid course enrollment also succeeds for async Stripe success webhook @eval(EVAL-LEARNERS-COURSE-009,EVAL-LEARNERS-COURSE-010)',
+  { timeout: 240000 },
+  async (t) => {
+    if (!hasStripeE2EConfig) {
+      t.skip(
+        'Stripe test credentials and webhook secret are not configured for e2e',
+      )
+      return
+    }
+
+    const publisherToken = extractAccessTokenFromStorageState(
+      stack.authStoragePath,
+    )
+    const unique = `${Date.now().toString(36)}-async`
+    const learnerStoragePath = path.join(
+      stack.authStorageDir,
+      `learner-${unique}-storage-state.json`,
+    )
+    const learnerEmail = `learner-${unique}@example.test`
+
+    await createAuthStorageState({
+      chromium,
+      baseUrl: stack.baseUrl,
+      storageStatePath: learnerStoragePath,
+      email: learnerEmail,
+      returnToPath: '/learn',
+      waitForTestId: 'auth-user-email',
+      waitForTestIdTimeoutMs: 90000,
+    })
+
+    const learnerToken = extractAccessTokenFromStorageState(learnerStoragePath)
+    const learnerClaims = decodeJwtPayload(learnerToken)
+    const learnerUserId = learnerClaims.sub
+    assert.ok(learnerUserId)
+
+    const saveData = await graphqlRequest({
+      token: publisherToken,
+      query: `mutation SaveCourse($input: CourseInput!) {
+        upsertCourse(input: $input) {
+          id
+          stripePriceId
+        }
+      }`,
+      variables: {
+        input: {
+          id: `course-${unique}`,
+          title: `Paid Async E2E ${unique}`,
+          description: `Paid async publish and enroll flow ${unique}`,
+          priceCents: 50,
+          currency: 'eur',
+          modules: [
+            {
+              id: `module-${unique}`,
+              title: `Module ${unique}`,
+              order: 1,
+              lessons: [
+                {
+                  id: `lesson-${unique}`,
+                  title: `Lesson ${unique}`,
+                  order: 1,
+                  contents: [],
+                  contentPages: [],
+                  exercises: [],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    })
+
+    const savedCourse = saveData.upsertCourse
+    assert.ok(savedCourse.stripePriceId)
+
+    await graphqlRequest({
+      token: publisherToken,
+      query: `mutation PublishCourse($courseId: String!) {
+        publishCourseDraft(courseId: $courseId) {
+          id
+        }
+      }`,
+      variables: { courseId: savedCourse.id },
+    })
+
+    const checkoutData = await graphqlRequest({
+      token: learnerToken,
+      query: `mutation CreateCourseCheckoutSession($courseId: String!, $channel: CheckoutChannel!) {
+        createCourseCheckoutSession(courseId: $courseId, channel: $channel) {
+          sessionId
+        }
+      }`,
+      variables: {
+        courseId: savedCourse.id,
+        channel: 'WEB',
+      },
+    })
+
+    const checkoutSessionId = checkoutData.createCourseCheckoutSession.sessionId
+
+    const webhookPayload = JSON.stringify({
+      id: `evt_${unique}`,
+      type: 'checkout.session.async_payment_succeeded',
+      data: {
+        object: {
+          id: checkoutSessionId,
+          payment_intent: `pi_${unique}`,
+          payment_status: 'paid',
+          status: 'complete',
+          amount_total: 50,
+          currency: 'eur',
+          metadata: {
+            user_id: learnerUserId,
+            course_id: savedCourse.id,
+          },
+        },
+      },
+    })
+
+    const webhookResponse = await httpRequest(
+      `http://localhost:${stack.apiPort}/api/webhooks/stripe`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'stripe-signature': signStripeWebhook(
+            webhookPayload,
+            stripeWebhookSecret,
+          ),
+        },
+        body: webhookPayload,
+      },
+    )
+
+    assert.equal(webhookResponse.statusCode, 200, webhookResponse.body)
+
+    const enrollmentData = await graphqlRequest({
+      token: learnerToken,
+      query: `query EnrollmentStatus($courseId: String!) {
+        courseEnrollmentStatus(courseId: $courseId) {
+          enrolled
+          status
+        }
+      }`,
+      variables: { courseId: savedCourse.id },
+    })
+
+    assert.equal(enrollmentData.courseEnrollmentStatus.enrolled, true)
+    assert.equal(enrollmentData.courseEnrollmentStatus.status, 'active')
+  },
+)
+
+test(
+  'real Stripe hosted checkout updates purchase success UI to enrolled @eval(EVAL-LEARNERS-COURSE-008,EVAL-LEARNERS-COURSE-009,EVAL-LEARNERS-COURSE-010)',
+  { timeout: 360000 },
+  async (t) => {
+    if (!hasStripeE2EConfig) {
+      t.skip(
+        'Stripe test credentials and webhook secret are not configured for e2e',
+      )
+      return
+    }
+
+    const publisherToken = extractAccessTokenFromStorageState(
+      stack.authStoragePath,
+    )
+    const unique = `${Date.now().toString(36)}-ui`
+    const learnerStoragePath = path.join(
+      stack.authStorageDir,
+      `learner-${unique}-storage-state.json`,
+    )
+    const learnerEmail = `learner-${unique}@example.test`
+
+    await createAuthStorageState({
+      chromium,
+      baseUrl: stack.baseUrl,
+      storageStatePath: learnerStoragePath,
+      email: learnerEmail,
+      returnToPath: '/learn',
+      waitForTestId: 'auth-user-email',
+      waitForTestIdTimeoutMs: 90000,
+    })
+
+    const saveData = await graphqlRequest({
+      token: publisherToken,
+      query: `mutation SaveCourse($input: CourseInput!) {
+        upsertCourse(input: $input) {
+          id
+          title
+          stripePriceId
+        }
+      }`,
+      variables: {
+        input: {
+          id: `course-${unique}`,
+          title: `Paid UI E2E ${unique}`,
+          description: `Real Stripe hosted checkout flow ${unique}`,
+          priceCents: 50,
+          currency: 'eur',
+          modules: [
+            {
+              id: `module-${unique}`,
+              title: `Module ${unique}`,
+              order: 1,
+              lessons: [
+                {
+                  id: `lesson-${unique}`,
+                  title: `Lesson ${unique}`,
+                  order: 1,
+                  contents: [],
+                  contentPages: [],
+                  exercises: [],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    })
+
+    const savedCourse = saveData.upsertCourse
+    assert.ok(savedCourse.stripePriceId)
+
+    await graphqlRequest({
+      token: publisherToken,
+      query: `mutation PublishCourse($courseId: String!) {
+        publishCourseDraft(courseId: $courseId) {
+          id
+          title
+        }
+      }`,
+      variables: { courseId: savedCourse.id },
+    })
+
+    const browser = await chromium.launch({ headless: true })
+    const context = await browser.newContext({
+      storageState: learnerStoragePath,
+    })
+    const page = await context.newPage()
+
+    try {
+      await page.goto(`${stack.baseUrl}/learn`, { waitUntil: 'networkidle' })
+      await page.goto(`${stack.baseUrl}/courses`, { waitUntil: 'networkidle' })
+
+      const courseCard = page
+        .locator('.course-card')
+        .filter({ hasText: savedCourse.title })
+        .first()
+      await courseCard.waitFor({ state: 'visible', timeout: 60000 })
+      await courseCard.getByRole('button', { name: /buy/i }).click()
+
+      await completeStripeHostedCheckout(page, { email: learnerEmail })
+
+      await page.waitForURL(/\/purchase\/success\?courseId=/, {
+        timeout: 120000,
+      })
+
+      await page
+        .getByText(
+          'Please wait while we confirm payment and activate enrollment.',
+        )
+        .waitFor({
+          state: 'visible',
+          timeout: 30000,
+        })
+
+      await page
+        .getByText(
+          'Payment received. Enrollment is syncing. This can take a few seconds.',
+        )
+        .waitFor({
+          state: 'visible',
+          timeout: 30000,
+        })
+
+      await page
+        .getByText('Enrollment confirmed. Your course is ready.')
+        .waitFor({
+          state: 'visible',
+          timeout: 120000,
+        })
+      await page.getByRole('button', { name: /open my courses/i }).waitFor({
+        state: 'visible',
+        timeout: 120000,
+      })
+    } finally {
+      await context.close()
+      await browser.close()
     }
   },
 )

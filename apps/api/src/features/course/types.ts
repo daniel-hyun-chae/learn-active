@@ -19,10 +19,16 @@ export enum BlankVariant {
   OPTIONS = 'OPTIONS',
 }
 
+export enum CheckoutChannel {
+  WEB = 'WEB',
+  MOBILE = 'MOBILE',
+}
+
 registerEnumType(ContentType, { name: 'ContentType' })
 registerEnumType(ExerciseType, { name: 'ExerciseType' })
 registerEnumType(SegmentType, { name: 'SegmentType' })
 registerEnumType(BlankVariant, { name: 'BlankVariant' })
+registerEnumType(CheckoutChannel, { name: 'CheckoutChannel' })
 
 @ObjectType()
 export class ContentBlock {
@@ -188,6 +194,18 @@ export class Course {
   @Field(() => String)
   description!: string
 
+  @Field(() => Int, { nullable: true })
+  priceCents?: number | null
+
+  @Field(() => String)
+  currency!: string
+
+  @Field(() => String, { nullable: true })
+  stripePriceId?: string | null
+
+  @Field(() => Boolean)
+  isPaid!: boolean
+
   @Field(() => String, { nullable: true })
   changeNote?: string | null
 
@@ -284,6 +302,15 @@ export class PublicCourse {
   @Field(() => String)
   description!: string
 
+  @Field(() => Int, { nullable: true })
+  priceCents?: number | null
+
+  @Field(() => String)
+  currency!: string
+
+  @Field(() => Boolean)
+  isPaid!: boolean
+
   @Field(() => String, { nullable: true })
   ownerDisplayName?: string
 }
@@ -325,4 +352,52 @@ export class Enrollment {
 
   @Field(() => String)
   enrolledAt!: string
+}
+
+@ObjectType()
+export class CheckoutSession {
+  @Field(() => String)
+  url!: string
+
+  @Field(() => String)
+  sessionId!: string
+}
+
+@ObjectType()
+export class Payment {
+  @Field(() => ID)
+  id!: string
+
+  @Field(() => ID)
+  userId!: string
+
+  @Field(() => ID)
+  courseId!: string
+
+  @Field(() => String)
+  stripeSessionId!: string
+
+  @Field(() => String, { nullable: true })
+  stripePaymentIntentId?: string | null
+
+  @Field(() => Int)
+  amountCents!: number
+
+  @Field(() => String)
+  currency!: string
+
+  @Field(() => String)
+  status!: string
+
+  @Field(() => String)
+  createdAt!: string
+}
+
+@ObjectType()
+export class EnrollmentStatus {
+  @Field(() => Boolean)
+  enrolled!: boolean
+
+  @Field(() => String, { nullable: true })
+  status?: string | null
 }

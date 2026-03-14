@@ -1,8 +1,22 @@
 export type Course = {
   id: string
+  slug?: string
   title: string
   description: string
+  priceCents?: number | null
+  currency?: string
+  isPaid?: boolean
   modules: Module[]
+}
+
+export type CatalogCourse = {
+  id: string
+  slug: string
+  title: string
+  description: string
+  priceCents?: number | null
+  currency: string
+  isPaid: boolean
 }
 
 export type Module = {

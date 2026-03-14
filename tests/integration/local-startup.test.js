@@ -12,6 +12,7 @@ function read(file) {
 test('local startup scripts @eval(EVAL-PLATFORM-LOCAL-001,EVAL-PLATFORM-LOCAL-003,EVAL-PLATFORM-LOCAL-004,EVAL-PLATFORM-LOCAL-005,EVAL-PLATFORM-LOCAL-008,EVAL-PLATFORM-LOCAL-010,EVAL-PLATFORM-LOCAL-011,EVAL-PLATFORM-LOCAL-012)', () => {
   const pkg = JSON.parse(read('package.json'))
   assert.ok(pkg.scripts.dev)
+  assert.ok(pkg.scripts['dev:cleanup'])
   assert.ok(pkg.scripts['smoke:local'])
   assert.ok(pkg.scripts['verify:setup'])
   const verify = read('scripts/verify-startup.mjs')
@@ -60,6 +61,7 @@ test('local startup scripts @eval(EVAL-PLATFORM-LOCAL-001,EVAL-PLATFORM-LOCAL-00
   assert.ok(smoke.includes('EXPO_PUBLIC_GRAPHQL_ENDPOINT'))
   assert.ok(browserCheck.includes('hydration'))
   assert.ok(browserCheck.includes('router-not-found'))
+  assert.ok(browserCheck.includes('auth-entry-page'))
   assert.ok(webRoot.includes('notFoundComponent'))
   assert.ok(webRoot.includes('router-not-found'))
   assert.ok(
@@ -79,11 +81,22 @@ test('dev command orchestrates setup and stack @eval(EVAL-PLATFORM-LOCAL-002)', 
   const devStack = read('scripts/dev-stack.mjs')
   assert.ok(dev.includes('setup-local.mjs'))
   assert.ok(dev.includes('dev-stack.mjs'))
+  const cleanup = read('scripts/cleanup-dev-stack.mjs')
   assert.ok(dev.includes('Running fail-hard local setup'))
   assert.ok(dev.includes('Starting development stack'))
+  assert.ok(cleanup.includes('wrangler dev'))
+  assert.ok(cleanup.includes('vite preview'))
+  assert.ok(cleanup.includes('node scripts/dev-stack.mjs'))
+  assert.ok(cleanup.includes('lsof'))
+  assert.ok(cleanup.includes('fuser'))
+  assert.ok(cleanup.includes('4000'))
+  assert.ok(cleanup.includes('4100'))
   assert.ok(devStack.includes("'wrangler'"))
   assert.ok(devStack.includes("'dev'"))
   assert.ok(devStack.includes('wrangler.jsonc'))
+  assert.ok(devStack.includes('STRIPE_SECRET_KEY:'))
+  assert.ok(devStack.includes('STRIPE_PUBLISHABLE_KEY:'))
+  assert.ok(devStack.includes('STRIPE_WEBHOOK_SECRET:'))
   assert.ok(devStack.includes('webAppDir'))
   assert.ok(devStack.includes('stylesheet'))
   assert.ok(!devStack.includes('db:migrate'))
@@ -108,6 +121,7 @@ test('devcontainer db helper workflow @eval(EVAL-PLATFORM-LOCAL-006,EVAL-PLATFOR
   const devcontainer = JSON.parse(read('.devcontainer/devcontainer.json'))
   const dockerfile = read('.devcontainer/Dockerfile')
   const compose = read('docker-compose.devcontainer.yml')
+  const readme = read('README.md')
   assert.ok(dev.includes('setup-local.mjs'))
   assert.ok(dbScript.includes('supabase/config.toml'))
   assert.ok(dbScript.includes('supabase@latest'))
@@ -126,6 +140,7 @@ test('devcontainer db helper workflow @eval(EVAL-PLATFORM-LOCAL-006,EVAL-PLATFOR
   assert.ok(compose.includes("shm_size: '1gb'"))
   assert.ok(devcontainer.remoteEnv.CI)
   assert.ok(devcontainer.remoteEnv.PLAYWRIGHT_BROWSERS_PATH)
+  assert.ok(readme.includes('pnpm dev:cleanup'))
   assert.ok(
     devcontainer.postCreateCommand.includes('playwright install chromium'),
   )
@@ -146,6 +161,25 @@ test('devcontainer opencode auth mount @eval(EVAL-PLATFORM-DEVCONTAINER-001)', (
   const authMount = mounts.find((mount) => mount.includes('opencode/auth.json'))
   assert.ok(authMount)
   assert.ok(authMount.includes(`target=${expectedAuthTarget}`))
+})
+
+test('worker cache key tracks Stripe bindings @eval(EVAL-PUBLISHERS-COURSE-007)', () => {
+  const worker = read('apps/api/src/worker.ts')
+  assert.ok(
+    worker.includes(
+      "const stripeSecretKey = bindings.STRIPE_SECRET_KEY ? '1' : '0'",
+    ),
+  )
+  assert.ok(
+    worker.includes(
+      "const stripePublishableKey = bindings.STRIPE_PUBLISHABLE_KEY ?? ''",
+    ),
+  )
+  assert.ok(
+    worker.includes(
+      "const stripeWebhookSecret = bindings.STRIPE_WEBHOOK_SECRET ? '1' : '0'",
+    ),
+  )
 })
 
 test('devcontainer compose user alignment @eval(EVAL-PLATFORM-DEVCONTAINER-001)', () => {

@@ -10,6 +10,9 @@ type PublicCourse = {
   slug: string
   title: string
   description: string
+  priceCents?: number | null
+  currency: string
+  isPaid: boolean
   ownerDisplayName?: string
 }
 
@@ -27,6 +30,9 @@ export const Route = createFileRoute('/courses/$slug')({
           slug
           title
           description
+          priceCents
+          currency
+          isPaid
           ownerDisplayName
         }
       }`,
@@ -35,6 +41,18 @@ export const Route = createFileRoute('/courses/$slug')({
   },
   component: PublicCourseDetailRoute,
 })
+
+function formatPrice(priceCents: number | null | undefined, currency: string) {
+  if (typeof priceCents !== 'number' || priceCents <= 0) {
+    return null
+  }
+
+  return new Intl.NumberFormat('en-IE', {
+    style: 'currency',
+    currency: currency.toUpperCase(),
+    minimumFractionDigits: 2,
+  }).format(priceCents / 100)
+}
 
 function PublicCourseDetailRoute() {
   const { t } = useTranslation()
@@ -64,6 +82,26 @@ function PublicCourseDetailRoute() {
     }
 
     try {
+      if (publicCourse.isPaid) {
+        const data = await fetchGraphQL<{
+          createCourseCheckoutSession: { url: string; sessionId: string }
+        }>(
+          `mutation CreateCourseCheckoutSession($courseId: String!, $channel: CheckoutChannel!) {
+            createCourseCheckoutSession(courseId: $courseId, channel: $channel) {
+              url
+              sessionId
+            }
+          }`,
+          {
+            courseId: publicCourse.id,
+            channel: 'WEB',
+          },
+        )
+
+        window.location.assign(data.createCourseCheckoutSession.url)
+        return
+      }
+
       await fetchGraphQL<{ enrollInCourse: { id: string } }>(
         `mutation EnrollInCourse($courseId: String!) {
           enrollInCourse(courseId: $courseId) {
@@ -74,7 +112,11 @@ function PublicCourseDetailRoute() {
       )
       setError(null)
     } catch {
-      setError(t('catalog.detail.enrollError'))
+      setError(
+        publicCourse.isPaid
+          ? t('catalog.detail.checkoutError')
+          : t('catalog.detail.enrollError'),
+      )
     }
   }
 
@@ -85,6 +127,15 @@ function PublicCourseDetailRoute() {
       </Link>
       <h2>{publicCourse.title}</h2>
       <p className="muted">{publicCourse.description}</p>
+      <p className="muted">
+        {publicCourse.isPaid
+          ? t('catalog.price', {
+              price:
+                formatPrice(publicCourse.priceCents, publicCourse.currency) ??
+                `${publicCourse.priceCents ?? 0} ${publicCourse.currency.toUpperCase()}`,
+            })
+          : t('catalog.free')}
+      </p>
       {publicCourse.ownerDisplayName ? (
         <p className="muted">
           {t('catalog.ownerLabel', { name: publicCourse.ownerDisplayName })}
@@ -93,7 +144,7 @@ function PublicCourseDetailRoute() {
 
       {auth.status === 'authenticated' ? (
         <PrimaryButton type="button" onClick={() => void handleEnroll()}>
-          {t('catalog.enroll')}
+          {publicCourse.isPaid ? t('catalog.buy') : t('catalog.enroll')}
         </PrimaryButton>
       ) : (
         <Link

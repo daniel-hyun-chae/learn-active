@@ -124,12 +124,41 @@ export const courses = pgTable(
       .notNull()
       .references(() => owners.id),
     slug: text('slug').notNull(),
+    priceCents: integer('price_cents'),
+    currency: text('currency').notNull().default('eur'),
+    stripePriceId: text('stripe_price_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     ownerIdIdx: index('courses_owner_id_idx').on(table.ownerId),
     slugUnique: uniqueIndex('courses_slug_key').on(table.slug),
+  }),
+)
+
+export const payments = pgTable(
+  'payments',
+  {
+    id: uuid('id').primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => profiles.userId),
+    courseId: uuid('course_id')
+      .notNull()
+      .references(() => courses.id),
+    stripeSessionId: text('stripe_session_id').notNull(),
+    stripePaymentIntentId: text('stripe_payment_intent_id'),
+    amountCents: integer('amount_cents').notNull(),
+    currency: text('currency').notNull(),
+    status: text('status').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    stripeSessionUnique: uniqueIndex('payments_stripe_session_id_key').on(
+      table.stripeSessionId,
+    ),
+    userIdx: index('payments_user_id_idx').on(table.userId),
+    courseIdx: index('payments_course_id_idx').on(table.courseId),
   }),
 )
 

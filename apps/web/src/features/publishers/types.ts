@@ -5,6 +5,10 @@ export type CourseDraft = {
   status?: 'draft' | 'published' | 'archived'
   title: string
   description: string
+  priceCents?: number | null
+  currency?: string
+  stripePriceId?: string | null
+  isPaid?: boolean
   changeNote?: string | null
   createdAt?: string
   createdBy?: string
