@@ -69,6 +69,7 @@ test('staging deployment workflow wiring', () => {
   )
   assert.ok(workflow.includes('SUPABASE_PROJECT_URL_STAGING'))
   assert.ok(workflow.includes('SUPABASE_PUBLISHABLE_KEY_STAGING'))
+  assert.ok(workflow.includes('SUPABASE_SERVICE_ROLE_KEY_STAGING'))
   assert.ok(workflow.includes('API_URL_STAGING'))
   assert.ok(workflow.includes('WEB_URL_STAGING'))
   assert.ok(workflow.includes('STRIPE_SECRET_KEY_STAGING'))
@@ -76,6 +77,7 @@ test('staging deployment workflow wiring', () => {
   assert.ok(workflow.includes('STRIPE_WEBHOOK_SECRET_STAGING'))
   assert.ok(workflow.includes('pnpm validate:deploy-env -- --target staging'))
   assert.ok(workflow.includes('Sync Stripe Worker secrets to staging'))
+  assert.ok(workflow.includes('wrangler secret put SUPABASE_SERVICE_ROLE_KEY'))
   assert.ok(workflow.includes('wrangler secret put STRIPE_SECRET_KEY'))
   assert.ok(workflow.includes('wrangler secret put STRIPE_WEBHOOK_SECRET'))
   assert.ok(workflow.includes('pnpm --filter @app/api deploy:worker:staging'))
@@ -100,6 +102,7 @@ test('production deploy and rollback workflow wiring', () => {
   assert.ok(workflow.includes('git merge-base --is-ancestor'))
   assert.ok(workflow.includes('SUPABASE_PROJECT_URL_PROD'))
   assert.ok(workflow.includes('SUPABASE_PUBLISHABLE_KEY_PROD'))
+  assert.ok(workflow.includes('SUPABASE_SERVICE_ROLE_KEY_PROD'))
   assert.ok(workflow.includes('API_URL_PROD'))
   assert.ok(workflow.includes('WEB_URL_PROD'))
   assert.ok(workflow.includes('STRIPE_SECRET_KEY_PROD'))
@@ -109,6 +112,7 @@ test('production deploy and rollback workflow wiring', () => {
     workflow.includes('pnpm validate:deploy-env -- --target production'),
   )
   assert.ok(workflow.includes('Sync Stripe Worker secrets to production'))
+  assert.ok(workflow.includes('wrangler secret put SUPABASE_SERVICE_ROLE_KEY'))
   assert.ok(workflow.includes('wrangler secret put STRIPE_SECRET_KEY'))
   assert.ok(workflow.includes('wrangler secret put STRIPE_WEBHOOK_SECRET'))
   assert.ok(workflow.includes('pnpm --filter @app/api deploy:worker:prod'))
@@ -140,6 +144,7 @@ test('deployment env validation enforces hosted URL contract', () => {
         ...process.env,
         SUPABASE_PROJECT_URL_STAGING: 'https://staging-project.supabase.co',
         SUPABASE_PUBLISHABLE_KEY_STAGING: 'staging-publishable-key',
+        SUPABASE_SERVICE_ROLE_KEY_STAGING: 'staging-service-role-key',
         API_URL_STAGING: 'https://api-staging.example.com/graphql',
         WEB_URL_STAGING: 'https://staging.example.com',
         STRIPE_SECRET_KEY_STAGING: 'sk_test_123',
@@ -160,6 +165,7 @@ test('deployment env validation enforces hosted URL contract', () => {
           ...process.env,
           SUPABASE_PROJECT_URL_STAGING: 'https://staging-project.supabase.co',
           SUPABASE_PUBLISHABLE_KEY_STAGING: 'staging-publishable-key',
+          SUPABASE_SERVICE_ROLE_KEY_STAGING: 'staging-service-role-key',
           API_URL_STAGING: 'https://api-staging.example.com/graphql',
           WEB_URL_STAGING: 'http://localhost:4100',
           STRIPE_SECRET_KEY_STAGING: 'sk_test_123',

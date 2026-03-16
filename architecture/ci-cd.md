@@ -87,6 +87,7 @@ Store these in GitHub Environments:
 
   - `SUPABASE_PROJECT_URL_STAGING`
   - `SUPABASE_PUBLISHABLE_KEY_STAGING`
+  - `SUPABASE_SERVICE_ROLE_KEY_STAGING`
   - `API_URL_STAGING`
   - `WEB_URL_STAGING`
   - `STRIPE_SECRET_KEY_STAGING`
@@ -96,6 +97,7 @@ Store these in GitHub Environments:
 - Environment `production`:
   - `SUPABASE_PROJECT_URL_PROD`
   - `SUPABASE_PUBLISHABLE_KEY_PROD`
+  - `SUPABASE_SERVICE_ROLE_KEY_PROD`
   - `API_URL_PROD`
   - `WEB_URL_PROD`
   - `STRIPE_SECRET_KEY_PROD`
@@ -141,6 +143,7 @@ This keeps hosted runtime fail-fast behavior in place while making missing or dr
 - Local development can use Stripe CLI webhook forwarding.
 - Staging and production do not depend on a long-running Stripe CLI session.
 - API deploy jobs sync `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` into the target Worker as Cloudflare secrets before deploy.
+- API deploy jobs sync `SUPABASE_SERVICE_ROLE_KEY` into the target Worker as a Cloudflare secret before deploy.
 - API deploy jobs use `scripts/deploy-api-worker.mjs` to pass hosted Worker vars (`APP_ENV`, `SUPABASE_URL`, `STRIPE_PUBLISHABLE_KEY`) directly to Wrangler.
 - API deploy jobs use `--keep-vars` inside that deploy script so redeploys do not silently drop required hosted Worker vars.
 - Use Stripe test-mode credentials for staging unless and until a live-mode production rollout is intentionally configured.
