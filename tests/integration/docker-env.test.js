@@ -9,7 +9,7 @@ function read(file) {
   return fs.readFileSync(path.join(root, file), 'utf8')
 }
 
-test('docker env configuration @eval(EVAL-PLATFORM-DOCKER-002)', () => {
+test('docker env configuration', () => {
   const envExample = read('.env.example')
   const readme = read('README.md')
   const config = read('shared/shared-config/src/index.ts')

@@ -25,7 +25,7 @@ Use this skill when creating or editing repo-local OpenCode governance such as `
 - Use `rules` only for always-true constraints. Move coaching, heuristics, and checklists into skills or agents.
 - Add or update `decision-log/` when governance choices materially change repo operation or portability.
 - Add or update `architecture/` when governance changes affect tooling architecture, startup behavior, or platform boundaries.
-- Add or update `evaluations/` and matching tests when governance changes alter required behavior.
+- Add or update `spec/` and matching tests when governance changes alter required behavior.
 
 ## Anti-Patterns
 
@@ -40,4 +40,4 @@ Use this skill when creating or editing repo-local OpenCode governance such as `
 - Verify each artifact matches the taxonomy.
 - Verify repo-local MCP definitions are present when the repo depends on them.
 - Verify rule loading in `opencode.json` covers every intended rule.
-- Verify changed docs, evaluations, and tests reflect the new governance behavior.
+- Verify changed docs, specs, and tests reflect the new governance behavior.

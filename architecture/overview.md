@@ -80,6 +80,5 @@ For detailed deployment, release, and rollback procedures, see `architecture/ci-
 ## References
 
 - Decision logs: `decision-log/`
-- Evaluations: `evaluations/`
-- Platform initialization evaluation: `evaluations/platform-initialization.md`
+- Product specification: `spec/`
 - CI/CD runbook: `architecture/ci-cd.md`

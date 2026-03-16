@@ -29,6 +29,8 @@ pnpm dev
 
 `pnpm dev` is the canonical local startup. It waits for DB readiness, applies Supabase migrations fail-hard, starts API + web servers, and verifies health checks.
 
+The API worker runtime now requires `SUPABASE_SERVICE_ROLE_KEY` for its default course repository path. Local dev/smoke/e2e scripts auto-derive this from `supabase status -o env` when not explicitly set.
+
 `pnpm db:up` excludes Supabase edge runtime by default for better reliability in restricted/offline environments. Include it only when needed:
 
 ```
@@ -56,12 +58,21 @@ pnpm dev:cleanup
 Guardrails:
 
 ```
+pnpm hooks:install
 pnpm verify:setup
 pnpm smoke:local
 pnpm test:unit
 pnpm test:integration
 pnpm test:e2e
 ```
+
+Optional: install repo-local git hooks once per clone to run lockfile parity checks before commit:
+
+```
+pnpm hooks:install
+```
+
+This configures `core.hooksPath` to `.githooks/` and runs `pnpm validate:lockfile` in pre-commit.
 
 ## Local URLs
 

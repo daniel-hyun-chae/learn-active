@@ -4,6 +4,7 @@ import { tokenVars } from '@app/shared-tokens'
 import { Surface } from '@app/shared-ui'
 import type { ContentBlock, Lesson } from './types'
 import { FillInBlankExercise } from './exercises/FillInBlankExercise'
+import { MultipleChoiceExercise } from './exercises/MultipleChoiceExercise'
 
 export type LessonViewSelection =
   | { type: 'summary' }
@@ -13,6 +14,11 @@ export type LessonViewSelection =
 type LessonViewProps = {
   lesson: Lesson
   selection?: LessonViewSelection
+  lessonProgressLabel?: string
+  onSubmitAttempt?: (args: {
+    exerciseId: string
+    answers: Record<string, string>
+  }) => Promise<void> | void
 }
 
 function renderContentBlocks(contents: ContentBlock[], testId: string) {
@@ -38,6 +44,8 @@ function renderContentBlocks(contents: ContentBlock[], testId: string) {
 export function LessonView({
   lesson,
   selection = { type: 'summary' },
+  lessonProgressLabel,
+  onSubmitAttempt,
 }: LessonViewProps) {
   const { t } = useTranslation()
 
@@ -61,6 +69,11 @@ export function LessonView({
         <div>
           <p className="muted">{t('learners.lesson.subtitle')}</p>
           <h2>{lesson.title}</h2>
+          {lessonProgressLabel ? (
+            <p className="muted" data-test="lesson-progress-label">
+              {lessonProgressLabel}
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -83,7 +96,27 @@ export function LessonView({
       ) : null}
 
       {selection.type === 'exercise' && selectedExercise ? (
-        <FillInBlankExercise exercise={selectedExercise} />
+        selectedExercise.type === 'MULTIPLE_CHOICE' ? (
+          <MultipleChoiceExercise
+            exercise={
+              selectedExercise as Extract<
+                Lesson['exercises'][number],
+                { type: 'MULTIPLE_CHOICE' }
+              >
+            }
+            onSubmitAttempt={onSubmitAttempt}
+          />
+        ) : (
+          <FillInBlankExercise
+            exercise={
+              selectedExercise as Extract<
+                Lesson['exercises'][number],
+                { type: 'FILL_IN_THE_BLANK' }
+              >
+            }
+            onSubmitAttempt={onSubmitAttempt}
+          />
+        )
       ) : null}
 
       {selection.type === 'exercise' && !selectedExercise ? (

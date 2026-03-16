@@ -7,6 +7,7 @@ export enum ContentType {
 
 export enum ExerciseType {
   FILL_IN_THE_BLANK = 'FILL_IN_THE_BLANK',
+  MULTIPLE_CHOICE = 'MULTIPLE_CHOICE',
 }
 
 export enum SegmentType {
@@ -103,6 +104,39 @@ export class ExerciseStep {
 }
 
 @ObjectType()
+export class FillInBlankExerciseContent {
+  @Field(() => [ExerciseStep])
+  steps!: ExerciseStep[]
+}
+
+@ObjectType()
+export class MultipleChoiceChoice {
+  @Field(() => ID)
+  id!: string
+
+  @Field(() => Int)
+  order!: number
+
+  @Field(() => String)
+  text!: string
+
+  @Field(() => Boolean)
+  isCorrect!: boolean
+}
+
+@ObjectType()
+export class MultipleChoiceExerciseContent {
+  @Field(() => String)
+  question!: string
+
+  @Field(() => Boolean)
+  allowsMultiple!: boolean
+
+  @Field(() => [MultipleChoiceChoice])
+  choices!: MultipleChoiceChoice[]
+}
+
+@ObjectType()
 export class Exercise {
   @Field(() => ID)
   id!: string
@@ -116,8 +150,11 @@ export class Exercise {
   @Field(() => String, { nullable: true })
   instructions?: string
 
-  @Field(() => [ExerciseStep])
-  steps!: ExerciseStep[]
+  @Field(() => FillInBlankExerciseContent, { nullable: true })
+  fillInBlank?: FillInBlankExerciseContent
+
+  @Field(() => MultipleChoiceExerciseContent, { nullable: true })
+  multipleChoice?: MultipleChoiceExerciseContent
 }
 
 @ObjectType()
@@ -286,6 +323,117 @@ export class CourseVersionDiff {
 
   @Field(() => [String])
   changedFields!: string[]
+}
+
+@ObjectType()
+export class AttemptAnswer {
+  @Field(() => String)
+  key!: string
+
+  @Field(() => String)
+  value!: string
+}
+
+@ObjectType()
+export class LearnerExerciseAttempt {
+  @Field(() => ID)
+  id!: string
+
+  @Field(() => ID)
+  userId!: string
+
+  @Field(() => ID)
+  courseId!: string
+
+  @Field(() => ID)
+  courseVersionId!: string
+
+  @Field(() => String)
+  lessonId!: string
+
+  @Field(() => String)
+  exerciseId!: string
+
+  @Field(() => [AttemptAnswer])
+  answers!: AttemptAnswer[]
+
+  @Field(() => Boolean)
+  isCorrect!: boolean
+
+  @Field(() => String)
+  attemptedAt!: string
+}
+
+@ObjectType()
+export class ExerciseAttemptStatus {
+  @Field(() => String)
+  exerciseId!: string
+
+  @Field(() => Boolean)
+  attempted!: boolean
+
+  @Field(() => Boolean, { nullable: true })
+  isCorrect!: boolean | null
+
+  @Field(() => String, { nullable: true })
+  attemptedAt!: string | null
+}
+
+@ObjectType()
+export class LessonProgress {
+  @Field(() => String)
+  lessonId!: string
+
+  @Field(() => Int)
+  completedExercises!: number
+
+  @Field(() => Int)
+  totalExercises!: number
+
+  @Field(() => Int)
+  percentComplete!: number
+
+  @Field(() => [ExerciseAttemptStatus])
+  exerciseAttempts!: ExerciseAttemptStatus[]
+}
+
+@ObjectType()
+export class ModuleProgress {
+  @Field(() => String)
+  moduleId!: string
+
+  @Field(() => Int)
+  completedExercises!: number
+
+  @Field(() => Int)
+  totalExercises!: number
+
+  @Field(() => Int)
+  percentComplete!: number
+
+  @Field(() => [LessonProgress])
+  lessons!: LessonProgress[]
+}
+
+@ObjectType()
+export class CourseProgress {
+  @Field(() => ID)
+  courseId!: string
+
+  @Field(() => ID)
+  courseVersionId!: string
+
+  @Field(() => Int)
+  completedExercises!: number
+
+  @Field(() => Int)
+  totalExercises!: number
+
+  @Field(() => Int)
+  percentComplete!: number
+
+  @Field(() => [ModuleProgress])
+  modules!: ModuleProgress[]
 }
 
 @ObjectType()

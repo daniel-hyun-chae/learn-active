@@ -1,4 +1,5 @@
 import {
+  boolean,
   index,
   jsonb,
   pgTable,
@@ -232,5 +233,43 @@ export const enrollments = pgTable(
     ),
     userIdx: index('enrollments_user_id_idx').on(table.userId),
     courseIdx: index('enrollments_course_id_idx').on(table.courseId),
+  }),
+)
+
+export const learnerExerciseAttempts = pgTable(
+  'learner_exercise_attempts',
+  {
+    id: uuid('id').primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => profiles.userId),
+    courseId: uuid('course_id')
+      .notNull()
+      .references(() => courses.id),
+    courseVersionId: uuid('course_version_id')
+      .notNull()
+      .references(() => courseVersions.id),
+    lessonId: text('lesson_id').notNull(),
+    exerciseId: text('exercise_id').notNull(),
+    answers: jsonb('answers').$type<Record<string, string>>().notNull(),
+    isCorrect: boolean('is_correct').notNull(),
+    attemptedAt: timestamp('attempted_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    userCourseIdx: index('learner_exercise_attempts_user_course_idx').on(
+      table.userId,
+      table.courseId,
+    ),
+    userVersionIdx: index('learner_exercise_attempts_user_version_idx').on(
+      table.userId,
+      table.courseVersionId,
+    ),
+    uniqueAttempt: uniqueIndex('learner_exercise_attempts_unique').on(
+      table.userId,
+      table.courseId,
+      table.courseVersionId,
+      table.lessonId,
+      table.exerciseId,
+    ),
   }),
 )

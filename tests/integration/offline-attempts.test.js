@@ -9,7 +9,7 @@ function read(file) {
   return fs.readFileSync(path.join(root, file), 'utf8')
 }
 
-test('offline quiz attempt scaffolding @eval(EVAL-PLATFORM-INIT-003)', () => {
+test('offline quiz attempt scaffolding', () => {
   const webStore = read('apps/web/src/shared/offline/quizAttemptStore.ts')
   const mobileStore = read(
     'apps/learners-mobile/src/shared/offline/quizAttemptStore.ts',

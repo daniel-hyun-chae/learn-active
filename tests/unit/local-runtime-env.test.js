@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 
-test('local runtime env loader merges .env, .env.local, and process env @eval(EVAL-PLATFORM-DOCKER-002)', async () => {
+test('local runtime env loader merges .env, .env.local, and process env', async () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-active-env-'))
 
   try {
@@ -35,7 +35,7 @@ test('local runtime env loader merges .env, .env.local, and process env @eval(EV
   }
 })
 
-test('local Stripe CLI auto-start decision and secret extraction @eval(EVAL-PUBLISHERS-COURSE-007)', async () => {
+test('local Stripe CLI auto-start decision and secret extraction', async () => {
   const mod = await import('../../scripts/lib/local-runtime-env.mjs')
 
   assert.equal(

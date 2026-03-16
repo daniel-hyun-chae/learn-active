@@ -21,7 +21,7 @@ type ScreenState =
   | { name: 'lesson'; courseId: string; lessonId: string }
 
 const coursesQuery = `query Courses {
-  courses {
+  learnerCourses {
     id
     title
     description
@@ -60,22 +60,34 @@ const coursesQuery = `query Courses {
           type
           title
           instructions
-          steps {
-            id
-            order
-            prompt
-            threadId
-            threadTitle
-            segments {
-              type
-              text
-              blankId
-            }
-            blanks {
+          fillInBlank {
+            steps {
               id
-              correct
-              variant
-              options
+              order
+              prompt
+              threadId
+              threadTitle
+              segments {
+                type
+                text
+                blankId
+              }
+              blanks {
+                id
+                correct
+                variant
+                options
+              }
+            }
+          }
+          multipleChoice {
+            question
+            allowsMultiple
+            choices {
+              id
+              order
+              text
+              isCorrect
             }
           }
         }
@@ -121,10 +133,10 @@ export function LearnerMobileApp() {
     setError(null)
     try {
       const data = await fetchGraphQL<{
-        courses: Course[]
+        learnerCourses: Course[]
         publicCourses: CatalogCourse[]
       }>(coursesQuery)
-      setCourses(data.courses)
+      setCourses(data.learnerCourses)
       setCatalogCourses(data.publicCourses)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))

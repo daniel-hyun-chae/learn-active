@@ -56,14 +56,26 @@ export const Route = createFileRoute('/publish/$courseId')({
                 type
                 title
                 instructions
-                steps {
-                  id
-                  order
-                  prompt
-                  threadId
-                  threadTitle
-                  segments { type text blankId }
-                  blanks { id correct variant options }
+                fillInBlank {
+                  steps {
+                    id
+                    order
+                    prompt
+                    threadId
+                    threadTitle
+                    segments { type text blankId }
+                    blanks { id correct variant options }
+                  }
+                }
+                multipleChoice {
+                  question
+                  allowsMultiple
+                  choices {
+                    id
+                    order
+                    text
+                    isCorrect
+                  }
                 }
               }
             }

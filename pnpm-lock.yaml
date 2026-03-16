@@ -35,6 +35,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@supabase/supabase-js':
+        specifier: ^2.57.4
+        version: 2.57.4
       class-validator:
         specifier: ^0.14.1
         version: 0.14.1
@@ -228,7 +231,7 @@ importers:
         version: 23.12.1
       react-i18next:
         specifier: ^14.1.3
-        version: 14.1.3(i18next@23.12.1)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
+        version: 14.1.3(i18next@23.12.1)(react-native@0.73.6(@babel/core@7.29.0)(@babel/preset-env@7.29.0(@babel/core@7.29.0))(react@18.2.0))(react@18.2.0)
 
   shared/shared-tokens: {}
 

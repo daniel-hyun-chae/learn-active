@@ -9,7 +9,7 @@ function read(file) {
   return fs.readFileSync(path.join(root, file), 'utf8')
 }
 
-test('graphql api skeleton @eval(EVAL-PLATFORM-INIT-004,EVAL-AUTH-LOCAL-004)', () => {
+test('graphql api skeleton', () => {
   const apiIndex = read('apps/api/src/index.ts')
   const apiApp = read('apps/api/src/app.ts')
   const healthResolver = read('apps/api/src/features/health/resolver.ts')

@@ -3,14 +3,18 @@ import { useTranslation } from 'react-i18next'
 import { tokenVars } from '@app/shared-tokens'
 import { PrimaryButton } from '@app/shared-ui'
 import type {
-  Exercise,
+  FillInBlankExercise as FillInBlankExerciseType,
   ExerciseBlank,
   ExerciseStep,
   SentenceSegment,
 } from '../types'
 
 type FillInBlankExerciseProps = {
-  exercise: Exercise
+  exercise: FillInBlankExerciseType
+  onSubmitAttempt?: (args: {
+    exerciseId: string
+    answers: Record<string, string>
+  }) => Promise<void> | void
 }
 
 type StepAnswers = Record<string, string>
@@ -33,15 +37,23 @@ function buildSentence(step: ExerciseStep, answers: StepAnswers) {
   })
 }
 
-export function FillInBlankExercise({ exercise }: FillInBlankExerciseProps) {
+export function FillInBlankExercise({
+  exercise,
+  onSubmitAttempt,
+}: FillInBlankExerciseProps) {
   const { t } = useTranslation()
+  const exerciseSteps = exercise.fillInBlank?.steps ?? []
   const steps = useMemo(
     () =>
-      [...exercise.steps].sort(
+      [...exerciseSteps].sort(
         (a: ExerciseStep, b: ExerciseStep) => a.order - b.order,
       ),
-    [exercise.steps],
+    [exerciseSteps],
   )
+
+  if (steps.length === 0) {
+    return <p className="muted">{t('learners.lesson.noExercise')}</p>
+  }
   const [currentIndex, setCurrentIndex] = useState(0)
   const [answersByStep, setAnswersByStep] = useState<
     Record<string, StepAnswers>
@@ -109,6 +121,18 @@ export function FillInBlankExercise({ exercise }: FillInBlankExerciseProps) {
       setCurrentIndex((index: number) => index + 1)
       return
     }
+
+    const mergedAnswers = steps.reduce<Record<string, string>>((acc, step) => {
+      const stepAnswers = answersByStep[step.id] ?? {}
+      for (const [key, value] of Object.entries(stepAnswers)) {
+        acc[key] = value
+      }
+      return acc
+    }, {})
+    void onSubmitAttempt?.({
+      exerciseId: exercise.id,
+      answers: mergedAnswers,
+    })
   }
 
   const previousSteps = steps.slice(0, currentIndex)

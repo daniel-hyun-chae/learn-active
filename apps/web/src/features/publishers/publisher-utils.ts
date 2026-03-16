@@ -3,6 +3,7 @@ import type {
   CourseDraft,
   ExerciseBlankDraft,
   ExerciseDraft,
+  MultipleChoiceChoiceDraft,
   ExerciseStepDraft,
   LessonDraft,
   LessonContentPageDraft,
@@ -173,25 +174,50 @@ export function normalizeDraft(course: CourseDraft): CourseDraft {
             (exercise: ExerciseDraft, exerciseIndex: number) => ({
               ...exercise,
               id: exercise.id ?? createId(`exercise-${exerciseIndex}`),
-              steps: exercise.steps.map(
-                (step: ExerciseStepDraft, stepIndex: number) => {
-                  const templateFromSegments = segmentsToBlankTemplate(
-                    step.segments,
-                  )
-                  const templateValue =
-                    typeof step.template === 'string'
-                      ? step.template
-                      : undefined
-                  const safeTemplate =
-                    templateValue ?? templateFromSegments ?? ''
-                  return {
-                    ...step,
-                    id: step.id ?? createId(`step-${stepIndex}`),
-                    template: safeTemplate,
-                    blanks: syncBlanks(safeTemplate, step.blanks),
+              ...(exercise.type === 'MULTIPLE_CHOICE'
+                ? {
+                    multipleChoice: {
+                      question: exercise.multipleChoice?.question ?? '',
+                      allowsMultiple: Boolean(
+                        exercise.multipleChoice?.allowsMultiple,
+                      ),
+                      choices: (exercise.multipleChoice?.choices ?? []).map(
+                        (
+                          choice: MultipleChoiceChoiceDraft,
+                          choiceIndex: number,
+                        ) => ({
+                          ...choice,
+                          id: choice.id ?? createId(`choice-${choiceIndex}`),
+                          order: choice.order ?? choiceIndex + 1,
+                          text: choice.text ?? '',
+                          isCorrect: Boolean(choice.isCorrect),
+                        }),
+                      ),
+                    },
                   }
-                },
-              ),
+                : {
+                    fillInBlank: {
+                      steps: (exercise.fillInBlank?.steps ?? []).map(
+                        (step: ExerciseStepDraft, stepIndex: number) => {
+                          const templateFromSegments = segmentsToBlankTemplate(
+                            step.segments,
+                          )
+                          const templateValue =
+                            typeof step.template === 'string'
+                              ? step.template
+                              : undefined
+                          const safeTemplate =
+                            templateValue ?? templateFromSegments ?? ''
+                          return {
+                            ...step,
+                            id: step.id ?? createId(`step-${stepIndex}`),
+                            template: safeTemplate,
+                            blanks: syncBlanks(safeTemplate, step.blanks),
+                          }
+                        },
+                      ),
+                    },
+                  }),
             }),
           ),
         }),
@@ -219,6 +245,15 @@ export function reindexLessons(lessons: LessonDraft[]) {
 export function reindexContentPages(contentPages: LessonContentPageDraft[]) {
   return contentPages.map((page, index) => ({
     ...page,
+    order: index + 1,
+  }))
+}
+
+export function reindexMultipleChoiceChoices(
+  choices: MultipleChoiceChoiceDraft[],
+) {
+  return choices.map((choice, index) => ({
+    ...choice,
     order: index + 1,
   }))
 }
@@ -262,27 +297,39 @@ export type CourseInputPayload = {
       }>
       exercises: Array<{
         id?: string
-        type: 'FILL_IN_THE_BLANK'
+        type: 'FILL_IN_THE_BLANK' | 'MULTIPLE_CHOICE'
         title: string
         instructions?: string
-        steps: Array<{
-          id?: string
-          order: number
-          prompt: string
-          threadId: string
-          threadTitle?: string
-          segments: Array<{
-            type: 'TEXT' | 'BLANK'
-            text?: string
-            blankId?: string
-          }>
-          blanks: Array<{
+        fillInBlank?: {
+          steps: Array<{
             id?: string
-            correct: string
-            variant: 'TYPING' | 'OPTIONS'
-            options?: string[]
+            order: number
+            prompt: string
+            threadId: string
+            threadTitle?: string
+            segments: Array<{
+              type: 'TEXT' | 'BLANK'
+              text?: string
+              blankId?: string
+            }>
+            blanks: Array<{
+              id?: string
+              correct: string
+              variant: 'TYPING' | 'OPTIONS'
+              options?: string[]
+            }>
           }>
-        }>
+        }
+        multipleChoice?: {
+          question: string
+          allowsMultiple: boolean
+          choices: Array<{
+            id?: string
+            order: number
+            text: string
+            isCorrect: boolean
+          }>
+        }
       }>
     }>
   }>
@@ -332,30 +379,55 @@ export function toCourseInput(course: CourseDraft): CourseInputPayload {
           type: exercise.type,
           title: exercise.title,
           instructions: exercise.instructions,
-          steps: exercise.steps.map((step) => {
-            const templateValue =
-              typeof step.template === 'string' ? step.template : undefined
-            const safeTemplate =
-              templateValue ?? segmentsToBlankTemplate(step.segments) ?? ''
-            const blanks = syncBlanks(safeTemplate, step.blanks)
-            return {
-              id: step.id,
-              order: step.order,
-              prompt: step.prompt,
-              threadId: step.threadId,
-              threadTitle: step.threadTitle,
-              segments: blankTemplateToSegments(safeTemplate, blanks),
-              blanks: blanks.map((blank) => ({
-                id: blank.id,
-                correct: blank.correct,
-                variant: blank.variant,
-                options:
-                  blank.variant === 'OPTIONS'
-                    ? parseBlankOptions(blank.options)
-                    : undefined,
-              })),
-            }
-          }),
+          ...(exercise.type === 'MULTIPLE_CHOICE'
+            ? {
+                multipleChoice: {
+                  question: exercise.multipleChoice?.question ?? '',
+                  allowsMultiple: Boolean(
+                    exercise.multipleChoice?.allowsMultiple,
+                  ),
+                  choices: (exercise.multipleChoice?.choices ?? []).map(
+                    (choice, index) => ({
+                      id: choice.id,
+                      order: choice.order ?? index + 1,
+                      text: choice.text,
+                      isCorrect: Boolean(choice.isCorrect),
+                    }),
+                  ),
+                },
+              }
+            : {
+                fillInBlank: {
+                  steps: (exercise.fillInBlank?.steps ?? []).map((step) => {
+                    const templateValue =
+                      typeof step.template === 'string'
+                        ? step.template
+                        : undefined
+                    const safeTemplate =
+                      templateValue ??
+                      segmentsToBlankTemplate(step.segments) ??
+                      ''
+                    const blanks = syncBlanks(safeTemplate, step.blanks)
+                    return {
+                      id: step.id,
+                      order: step.order,
+                      prompt: step.prompt,
+                      threadId: step.threadId,
+                      threadTitle: step.threadTitle,
+                      segments: blankTemplateToSegments(safeTemplate, blanks),
+                      blanks: blanks.map((blank) => ({
+                        id: blank.id,
+                        correct: blank.correct,
+                        variant: blank.variant,
+                        options:
+                          blank.variant === 'OPTIONS'
+                            ? parseBlankOptions(blank.options)
+                            : undefined,
+                      })),
+                    }
+                  }),
+                },
+              }),
         })),
       })),
     })),

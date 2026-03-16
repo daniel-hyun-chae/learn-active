@@ -13,7 +13,7 @@ function readJson(file) {
   return JSON.parse(read(file))
 }
 
-test('devcontainer compose wiring @eval(EVAL-PLATFORM-DEVCONTAINER-001)', () => {
+test('devcontainer compose wiring', () => {
   const compose = read('docker-compose.devcontainer.yml')
   const devcontainer = readJson(path.join('.devcontainer', 'devcontainer.json'))
 

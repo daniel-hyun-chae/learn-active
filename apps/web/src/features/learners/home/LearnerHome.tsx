@@ -4,8 +4,10 @@ import { Link } from '@tanstack/react-router'
 import { Surface, PrimaryButton } from '@app/shared-ui'
 import { tokenVars } from '@app/shared-tokens'
 import { quizAttemptStore } from '../../../shared/offline/quizAttemptStore'
+import type { CourseProgress } from '../course/types'
 type CourseSummary = {
   id: string
+  versionId: string
   title: string
   description: string
   modules: Array<{
@@ -13,6 +15,8 @@ type CourseSummary = {
     lessons: Array<{ id: string }>
   }>
 }
+
+type CourseProgressByCourseId = Record<string, CourseProgress>
 
 const quizFormatKeys = [
   'learners.quiz.format.multipleChoice',
@@ -28,9 +32,14 @@ function createAttemptId() {
 type LearnerHomeProps = {
   apiHealth: string
   courses: CourseSummary[]
+  progressByCourseId?: CourseProgressByCourseId
 }
 
-export function LearnerHome({ apiHealth, courses }: LearnerHomeProps) {
+export function LearnerHome({
+  apiHealth,
+  courses,
+  progressByCourseId = {},
+}: LearnerHomeProps) {
   const { t } = useTranslation()
   const [status, setStatus] = useState<string>('')
 
@@ -68,6 +77,13 @@ export function LearnerHome({ apiHealth, courses }: LearnerHomeProps) {
             const lessonPath = firstLesson
               ? `/courses/${course.id}/lessons/${firstLesson.id}`
               : undefined
+            const progress = progressByCourseId[course.id]
+            const progressLabel = progress
+              ? t('learners.progress.courseSummary', {
+                  completed: progress.completedExercises,
+                  total: progress.totalExercises,
+                })
+              : null
 
             return (
               <Surface key={course.id} data-test="course-card">
@@ -77,6 +93,11 @@ export function LearnerHome({ apiHealth, courses }: LearnerHomeProps) {
                       {course.title}
                     </h3>
                     <p className="muted">{course.description}</p>
+                    {progressLabel ? (
+                      <p className="muted" data-test="course-card-progress">
+                        {progressLabel}
+                      </p>
+                    ) : null}
                   </div>
                   {lessonPath ? (
                     <Link

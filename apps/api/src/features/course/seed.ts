@@ -53,94 +53,126 @@ export const courses: SeedCourse[] = [
                 id: 'exercise-german-1',
                 type: ExerciseType.FILL_IN_THE_BLANK,
                 title: 'Introduce yourself at the cafe',
-                steps: [
-                  {
-                    id: 'step-german-1',
-                    order: 1,
-                    prompt: 'Complete the greeting.',
-                    threadId: 'thread-cafe',
-                    threadTitle: 'Cafe conversation',
-                    segments: [
-                      { type: SegmentType.TEXT, text: 'Hallo, ich heiße ' },
-                      { type: SegmentType.BLANK, blankId: 'blank-german-1' },
-                      { type: SegmentType.TEXT, text: '.' },
-                    ],
-                    blanks: [
-                      {
-                        id: 'blank-german-1',
-                        correct: 'Anna',
-                        variant: BlankVariant.OPTIONS,
-                        options: ['Anna', 'Peter', 'Berlin'],
-                      },
-                    ],
-                  },
-                  {
-                    id: 'step-german-2',
-                    order: 2,
-                    prompt: 'Share where you are from.',
-                    threadId: 'thread-cafe',
-                    threadTitle: 'Cafe conversation',
-                    segments: [
-                      { type: SegmentType.TEXT, text: 'Ich komme aus ' },
-                      { type: SegmentType.BLANK, blankId: 'blank-german-2' },
-                      { type: SegmentType.TEXT, text: '.' },
-                    ],
-                    blanks: [
-                      {
-                        id: 'blank-german-2',
-                        correct: 'Berlin',
-                        variant: BlankVariant.TYPING,
-                      },
-                    ],
-                  },
-                  {
-                    id: 'step-german-3',
-                    order: 3,
-                    prompt: 'Keep the conversation going.',
-                    threadId: 'thread-cafe',
-                    threadTitle: 'Cafe conversation',
-                    segments: [
-                      { type: SegmentType.TEXT, text: 'Und du? Ich bin ' },
-                      { type: SegmentType.BLANK, blankId: 'blank-german-3' },
-                      { type: SegmentType.TEXT, text: ' und lerne ' },
-                      { type: SegmentType.BLANK, blankId: 'blank-german-4' },
-                      { type: SegmentType.TEXT, text: '.' },
-                    ],
-                    blanks: [
-                      {
-                        id: 'blank-german-3',
-                        correct: 'Tom',
-                        variant: BlankVariant.OPTIONS,
-                        options: ['Tom', 'Lena', 'Paul'],
-                      },
-                      {
-                        id: 'blank-german-4',
-                        correct: 'Deutsch',
-                        variant: BlankVariant.OPTIONS,
-                        options: ['Deutsch', 'Englisch', 'Französisch'],
-                      },
-                    ],
-                  },
-                  {
-                    id: 'step-german-4',
-                    order: 4,
-                    prompt: 'A new phrase outside the conversation.',
-                    threadId: 'thread-farewell',
-                    threadTitle: 'Quick farewell',
-                    segments: [
-                      { type: SegmentType.TEXT, text: 'Gute Nacht, ' },
-                      { type: SegmentType.BLANK, blankId: 'blank-german-5' },
-                      { type: SegmentType.TEXT, text: '.' },
-                    ],
-                    blanks: [
-                      {
-                        id: 'blank-german-5',
-                        correct: 'Freunde',
-                        variant: BlankVariant.TYPING,
-                      },
-                    ],
-                  },
-                ],
+                fillInBlank: {
+                  steps: [
+                    {
+                      id: 'step-german-1',
+                      order: 1,
+                      prompt: 'Complete the greeting.',
+                      threadId: 'thread-cafe',
+                      threadTitle: 'Cafe conversation',
+                      segments: [
+                        { type: SegmentType.TEXT, text: 'Hallo, ich heiße ' },
+                        { type: SegmentType.BLANK, blankId: 'blank-german-1' },
+                        { type: SegmentType.TEXT, text: '.' },
+                      ],
+                      blanks: [
+                        {
+                          id: 'blank-german-1',
+                          correct: 'Anna',
+                          variant: BlankVariant.OPTIONS,
+                          options: ['Anna', 'Peter', 'Berlin'],
+                        },
+                      ],
+                    },
+                    {
+                      id: 'step-german-2',
+                      order: 2,
+                      prompt: 'Share where you are from.',
+                      threadId: 'thread-cafe',
+                      threadTitle: 'Cafe conversation',
+                      segments: [
+                        { type: SegmentType.TEXT, text: 'Ich komme aus ' },
+                        { type: SegmentType.BLANK, blankId: 'blank-german-2' },
+                        { type: SegmentType.TEXT, text: '.' },
+                      ],
+                      blanks: [
+                        {
+                          id: 'blank-german-2',
+                          correct: 'Berlin',
+                          variant: BlankVariant.TYPING,
+                        },
+                      ],
+                    },
+                    {
+                      id: 'step-german-3',
+                      order: 3,
+                      prompt: 'Keep the conversation going.',
+                      threadId: 'thread-cafe',
+                      threadTitle: 'Cafe conversation',
+                      segments: [
+                        { type: SegmentType.TEXT, text: 'Und du? Ich bin ' },
+                        { type: SegmentType.BLANK, blankId: 'blank-german-3' },
+                        { type: SegmentType.TEXT, text: ' und lerne ' },
+                        { type: SegmentType.BLANK, blankId: 'blank-german-4' },
+                        { type: SegmentType.TEXT, text: '.' },
+                      ],
+                      blanks: [
+                        {
+                          id: 'blank-german-3',
+                          correct: 'Tom',
+                          variant: BlankVariant.OPTIONS,
+                          options: ['Tom', 'Lena', 'Paul'],
+                        },
+                        {
+                          id: 'blank-german-4',
+                          correct: 'Deutsch',
+                          variant: BlankVariant.OPTIONS,
+                          options: ['Deutsch', 'Englisch', 'Französisch'],
+                        },
+                      ],
+                    },
+                    {
+                      id: 'step-german-4',
+                      order: 4,
+                      prompt: 'A new phrase outside the conversation.',
+                      threadId: 'thread-farewell',
+                      threadTitle: 'Quick farewell',
+                      segments: [
+                        { type: SegmentType.TEXT, text: 'Gute Nacht, ' },
+                        { type: SegmentType.BLANK, blankId: 'blank-german-5' },
+                        { type: SegmentType.TEXT, text: '.' },
+                      ],
+                      blanks: [
+                        {
+                          id: 'blank-german-5',
+                          correct: 'Freunde',
+                          variant: BlankVariant.TYPING,
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+              {
+                id: 'exercise-german-2',
+                type: ExerciseType.MULTIPLE_CHOICE,
+                title: 'Choose the correct greeting response',
+                instructions: 'Select one correct option.',
+                multipleChoice: {
+                  question: 'How do you say "Good evening" in German?',
+                  allowsMultiple: false,
+                  choices: [
+                    {
+                      id: 'choice-german-1',
+                      order: 1,
+                      text: 'Guten Abend',
+                      isCorrect: true,
+                    },
+                    {
+                      id: 'choice-german-2',
+                      order: 2,
+                      text: 'Gute Nacht',
+                      isCorrect: false,
+                    },
+                    {
+                      id: 'choice-german-3',
+                      order: 3,
+                      text: 'Guten Morgen',
+                      isCorrect: false,
+                    },
+                  ],
+                },
               },
             ],
           },

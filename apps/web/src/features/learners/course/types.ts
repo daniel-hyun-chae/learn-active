@@ -1,8 +1,41 @@
 export type Course = {
   id: string
+  versionId: string
   title: string
   description: string
   modules: Module[]
+}
+
+export type ExerciseAttemptStatus = {
+  exerciseId: string
+  attempted: boolean
+  isCorrect: boolean | null
+  attemptedAt: string | null
+}
+
+export type LessonProgress = {
+  lessonId: string
+  completedExercises: number
+  totalExercises: number
+  percentComplete: number
+  exerciseAttempts: ExerciseAttemptStatus[]
+}
+
+export type ModuleProgress = {
+  moduleId: string
+  completedExercises: number
+  totalExercises: number
+  percentComplete: number
+  lessons: LessonProgress[]
+}
+
+export type CourseProgress = {
+  courseId: string
+  courseVersionId: string
+  completedExercises: number
+  totalExercises: number
+  percentComplete: number
+  modules: ModuleProgress[]
 }
 
 export type Module = {
@@ -36,12 +69,29 @@ export type ContentBlock = {
   imageAlt?: string
 }
 
-export type Exercise = {
+export type FillInBlankExercise = {
   id: string
   type: 'FILL_IN_THE_BLANK'
   title: string
-  steps: ExerciseStep[]
+  instructions?: string
+  fillInBlank: {
+    steps: ExerciseStep[]
+  }
 }
+
+export type MultipleChoiceExercise = {
+  id: string
+  type: 'MULTIPLE_CHOICE'
+  title: string
+  instructions?: string
+  multipleChoice: {
+    question: string
+    allowsMultiple: boolean
+    choices: MultipleChoiceChoice[]
+  }
+}
+
+export type Exercise = FillInBlankExercise | MultipleChoiceExercise
 
 export type ExerciseStep = {
   id: string
@@ -64,4 +114,11 @@ export type ExerciseBlank = {
   correct: string
   variant: 'TYPING' | 'OPTIONS'
   options?: string[]
+}
+
+export type MultipleChoiceChoice = {
+  id: string
+  order: number
+  text: string
+  isCorrect: boolean
 }

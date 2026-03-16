@@ -13,7 +13,7 @@ const requiredEntries = [
   'apps/api/src/worker.ts',
 ]
 
-test('app entry points present @eval(EVAL-PLATFORM-INIT-001)', () => {
+test('app entry points present', () => {
   for (const entry of requiredEntries) {
     const fullPath = path.join(root, entry)
     assert.ok(fs.existsSync(fullPath), `${entry} should exist`)

@@ -14,13 +14,23 @@ This repository keeps OpenCode governance self-contained. Prefer repo-local gove
 
 ## Primary UX
 
-- Use `.opencode/agents/change-orchestrator.md` as the main conversational workflow.
-- Keep planning, verification, and governance checks inside the orchestrator unless a user-facing command has a clear approval or execution boundary.
-- Treat `implement` as the explicit approval to leave planning mode and start editing.
+Two agents, two workflows:
+
+- **backlog-planner** (`.opencode/agents/backlog-planner.md`): planning sessions. Creates, updates, and reprioritizes backlog items. Never modifies code.
+- **change-orchestrator** (`.opencode/agents/change-orchestrator.md`): implementation sessions. Takes a backlog item (or ad-hoc request), implements it, and tracks progress in the backlog item file.
+
+Workflow:
+
+1. Plan with backlog-planner -> outputs items in `backlog/proposed/` with status `Proposed`.
+2. Human sets status to `Ready` when approved for implementation.
+3. Implement with change-orchestrator -> reads item, implements, updates item with progress, moves to `backlog/done/` when complete.
+
+Treat `implement` as the explicit approval to leave planning mode and start editing.
 
 ## Source Of Truth
 
-- `evaluations/` defines acceptance criteria and test alignment.
+- `backlog/` is the single source of truth for planned and completed work items. See `backlog/README.md` for conventions.
+- `spec/` defines product behavior and testable assertions. See `spec/README.md` for conventions.
 - `decision-log/` records implementation-affecting decisions.
 - `architecture/` holds deeper technical and tooling documentation.
 - `README.md` stays human-first and concise.
@@ -35,4 +45,4 @@ This repository keeps OpenCode governance self-contained. Prefer repo-local gove
 - Do not rely on `.opencode/memory/` or workspace session backup flows.
 - Do not assume host `~/.config/opencode` is available inside the devcontainer.
 - Keep repo-local MCP definitions in `opencode.json`.
-- When governance changes affect startup or tooling, update evaluations, tests, and docs in the same change.
+- When governance changes affect startup or tooling, update spec, tests, and docs in the same change.

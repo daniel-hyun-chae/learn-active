@@ -20,7 +20,7 @@ const requiredPaths = [
   'apps/learners-mobile/src/features/learners',
 ]
 
-test('monorepo structure @eval(EVAL-PLATFORM-INIT-001)', () => {
+test('monorepo structure', () => {
   for (const entry of requiredPaths) {
     const fullPath = path.join(root, entry)
     assert.ok(fs.existsSync(fullPath), `${entry} should exist`)

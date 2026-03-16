@@ -77,10 +77,26 @@ export type ContentDraft = {
 
 export type ExerciseDraft = {
   id?: string
-  type: 'FILL_IN_THE_BLANK'
+  type: 'FILL_IN_THE_BLANK' | 'MULTIPLE_CHOICE'
   title: string
   instructions?: string
-  steps: ExerciseStepDraft[]
+  fillInBlank?: {
+    steps: ExerciseStepDraft[]
+  }
+  multipleChoice?: MultipleChoiceExerciseDraft
+}
+
+export type MultipleChoiceExerciseDraft = {
+  question: string
+  allowsMultiple: boolean
+  choices: MultipleChoiceChoiceDraft[]
+}
+
+export type MultipleChoiceChoiceDraft = {
+  id?: string
+  order: number
+  text: string
+  isCorrect: boolean
 }
 
 export type ExerciseStepDraft = {
