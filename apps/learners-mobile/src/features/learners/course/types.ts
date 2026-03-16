@@ -50,13 +50,29 @@ export type ContentBlock = {
   imageAlt?: string
 }
 
-export type Exercise = {
+export type FillInBlankExercise = {
   id: string
   type: 'FILL_IN_THE_BLANK'
   title: string
   instructions?: string
-  steps: ExerciseStep[]
+  fillInBlank: {
+    steps: ExerciseStep[]
+  }
 }
+
+export type MultipleChoiceExercise = {
+  id: string
+  type: 'MULTIPLE_CHOICE'
+  title: string
+  instructions?: string
+  multipleChoice: {
+    question: string
+    allowsMultiple: boolean
+    choices: MultipleChoiceChoice[]
+  }
+}
+
+export type Exercise = FillInBlankExercise | MultipleChoiceExercise
 
 export type ExerciseStep = {
   id: string
@@ -77,4 +93,11 @@ export type ExerciseBlank = {
   correct: string
   variant: 'TYPING' | 'OPTIONS'
   options?: string[]
+}
+
+export type MultipleChoiceChoice = {
+  id: string
+  order: number
+  text: string
+  isCorrect: boolean
 }

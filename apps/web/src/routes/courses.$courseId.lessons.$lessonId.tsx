@@ -1,8 +1,13 @@
-import { Link, createFileRoute } from '@tanstack/react-router'
+import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LessonView } from '../features/learners/course/LessonView'
-import type { Lesson } from '../features/learners/course/types'
+import type {
+  CourseProgress,
+  Lesson,
+  LessonProgress,
+  ModuleProgress,
+} from '../features/learners/course/types'
 import { requireWebSession } from '../features/auth/route-guard'
 import { fetchGraphQL } from '../shared/api/graphql'
 
@@ -40,7 +45,22 @@ type StructureModule = {
 type LoaderData = {
   lesson: Lesson | null
   modules: StructureModule[]
+  courseVersionId: string | null
+  progress: CourseProgress | null
   courseId: string
+}
+
+type CourseLessonQueryData = {
+  learnerCourse: {
+    versionId: string
+    modules: Array<{
+      id: string
+      title: string
+      order: number
+      lessons: Lesson[]
+    }>
+  } | null
+  learnerCourseProgress: CourseProgress | null
 }
 
 function normalizeSearch(search: Record<string, unknown>): LessonSearch {
@@ -82,16 +102,7 @@ export const Route = createFileRoute('/courses/$courseId/lessons/$lessonId')({
       lessonId: string
     }
 
-    const data = await fetchGraphQL<{
-      learnerCourse: {
-        modules: Array<{
-          id: string
-          title: string
-          order: number
-          lessons: Lesson[]
-        }>
-      } | null
-    }>(
+    const data = await fetchGraphQL<CourseLessonQueryData>(
       `query CourseLesson($id: String!) {
         learnerCourse(id: $id) {
           modules {
@@ -125,24 +136,62 @@ export const Route = createFileRoute('/courses/$courseId/lessons/$lessonId')({
                 id
                 type
                 title
-                steps {
-                  id
-                  order
-                  prompt
-                  threadId
-                  threadTitle
-                  segments {
-                    type
-                    text
-                    blankId
-                  }
-                  blanks {
+                instructions
+                fillInBlank {
+                  steps {
                     id
-                    correct
-                    variant
-                    options
+                    order
+                    prompt
+                    threadId
+                    threadTitle
+                    segments {
+                      type
+                      text
+                      blankId
+                    }
+                    blanks {
+                      id
+                      correct
+                      variant
+                      options
+                    }
                   }
                 }
+                multipleChoice {
+                  question
+                  allowsMultiple
+                  choices {
+                    id
+                    order
+                    text
+                    isCorrect
+                  }
+                }
+              }
+            }
+          }
+        }
+        learnerCourseProgress(courseId: $id) {
+          courseId
+          courseVersionId
+          completedExercises
+          totalExercises
+          percentComplete
+          modules {
+            moduleId
+            completedExercises
+            totalExercises
+            percentComplete
+            lessons {
+              lessonId
+              completedExercises
+              totalExercises
+              percentComplete
+              exerciseAttempts {
+                exerciseId
+                attempted
+                isCorrect
+                attemptedAt
               }
             }
           }
@@ -183,20 +232,82 @@ export const Route = createFileRoute('/courses/$courseId/lessons/$lessonId')({
         .flatMap((module) => module.lessons)
         .find((item) => item.id === lessonId) ?? null
 
-    return { lesson, modules, courseId }
+    return {
+      lesson,
+      modules,
+      courseId,
+      courseVersionId: data.learnerCourse?.versionId ?? null,
+      progress: data.learnerCourseProgress ?? null,
+    }
   },
   component: LessonRoute,
 })
 
 function LessonRoute() {
   const { t } = useTranslation()
-  const { lesson, modules, courseId } = Route.useLoaderData() as LoaderData
+  const router = useRouter()
+  const { lesson, modules, courseId, courseVersionId, progress } =
+    Route.useLoaderData() as LoaderData
   const { lessonId } = Route.useParams() as { lessonId: string }
   const { block, contentPageId, exerciseId } = Route.useSearch() as LessonSearch
   const [isStructureOpen, setIsStructureOpen] = useState(true)
 
   if (!lesson) {
     return <p className="muted">{t('learners.lesson.notFound')}</p>
+  }
+
+  const lessonProgress =
+    progress?.modules
+      .flatMap((module: ModuleProgress) => module.lessons)
+      .find((entry: LessonProgress) => entry.lessonId === lessonId) ?? null
+
+  const moduleProgressById = new Map(
+    (progress?.modules ?? []).map((module) => [module.moduleId, module]),
+  )
+
+  const overallProgressLabel = progress
+    ? t('learners.progress.courseSummary', {
+        completed: progress.completedExercises,
+        total: progress.totalExercises,
+      })
+    : undefined
+
+  const lessonProgressLabel = lessonProgress
+    ? t('learners.progress.lessonSummary', {
+        completed: lessonProgress.completedExercises,
+        total: lessonProgress.totalExercises,
+      })
+    : undefined
+
+  async function submitAttempt(args: {
+    exerciseId: string
+    answers: Record<string, string>
+  }) {
+    if (!courseVersionId) {
+      return
+    }
+
+    await fetchGraphQL(
+      `mutation UpsertLearnerAttempt($input: LearnerExerciseAttemptInput!) {
+        upsertLearnerExerciseAttempt(input: $input) {
+          id
+        }
+      }`,
+      {
+        input: {
+          courseId,
+          courseVersionId,
+          lessonId,
+          exerciseId: args.exerciseId,
+          answers: Object.entries(args.answers).map(([key, value]) => ({
+            key,
+            value,
+          })),
+        },
+      },
+    )
+
+    await router.invalidate()
   }
 
   const lessonSelection =
@@ -236,6 +347,11 @@ function LessonRoute() {
       >
         <div className="section-header">
           <h3>{t('learners.structure.title')}</h3>
+          {overallProgressLabel ? (
+            <span className="muted" data-test="course-progress-label">
+              {overallProgressLabel}
+            </span>
+          ) : null}
         </div>
 
         <div
@@ -247,6 +363,7 @@ function LessonRoute() {
             const moduleActive = module.lessons.some(
               (moduleLesson) => moduleLesson.id === lessonId,
             )
+            const moduleProgress = moduleProgressById.get(module.id)
 
             return (
               <div key={module.id} className="learning-structure-module">
@@ -266,7 +383,11 @@ function LessonRoute() {
                 >
                   <span>{module.title}</span>
                   <span className="muted">
-                    {t('learners.structure.module')}
+                    {moduleProgress
+                      ? t('learners.progress.modulePercent', {
+                          percent: moduleProgress.percentComplete,
+                        })
+                      : t('learners.structure.module')}
                   </span>
                 </Link>
 
@@ -342,6 +463,25 @@ function LessonRoute() {
                                 block === 'exercise' &&
                                 exerciseId === exercise.id
 
+                              const exerciseAttempt = moduleProgress?.lessons
+                                .find(
+                                  (entry) => entry.lessonId === moduleLesson.id,
+                                )
+                                ?.exerciseAttempts.find(
+                                  (entry) => entry.exerciseId === exercise.id,
+                                )
+
+                              const exerciseStatusLabel =
+                                exerciseAttempt?.attempted
+                                  ? exerciseAttempt.isCorrect
+                                    ? t(
+                                        'learners.progress.exerciseStatusCorrect',
+                                      )
+                                    : t(
+                                        'learners.progress.exerciseStatusAttempted',
+                                      )
+                                  : t('learners.structure.exercise')
+
                               return (
                                 <Link
                                   key={exercise.id}
@@ -363,7 +503,7 @@ function LessonRoute() {
                                 >
                                   <span>{exercise.title}</span>
                                   <span className="muted">
-                                    {t('learners.structure.exercise')}
+                                    {exerciseStatusLabel}
                                   </span>
                                 </Link>
                               )
@@ -381,7 +521,12 @@ function LessonRoute() {
       </aside>
 
       <div className="learning-content-column">
-        <LessonView lesson={lesson} selection={lessonSelection} />
+        <LessonView
+          lesson={lesson}
+          selection={lessonSelection}
+          lessonProgressLabel={lessonProgressLabel}
+          onSubmitAttempt={submitAttempt}
+        />
       </div>
     </section>
   )

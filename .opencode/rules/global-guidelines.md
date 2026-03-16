@@ -18,12 +18,12 @@ These rules are the implementation gate for all work in this repo. Treat them as
 - Accessibility is always considered and baked into all frontend implementation.
 - Ensure semantic structure, keyboard support, focus visibility, and sufficient contrast.
 
-## Testing and Evaluation
+## Testing and Spec
 
-- Test directions and acceptance criteria live under `evaluations/` and are the single source of implementation detail.
-- Every new feature must add or extend evaluation criteria in `evaluations/`.
-- Every test must reference the relevant evaluation criteria using the convention in `evaluations/README.md`.
-- Evaluation criteria must be written in a human-readable structure with a high-level goal for each block.
+- Product behavior is defined in `spec/` files. Each spec file has narrative sections and a Behaviors section with testable assertions.
+- Every new feature must add or extend behaviors in the relevant `spec/` file.
+- Tests use descriptive names that map to spec behaviors. See `spec/README.md` for the naming convention.
+- Architecture-level testing patterns are defined in `.opencode/rules/testing-patterns.md` and applied to all implementations.
 - For AI-driven local changes, run the relevant local validation, build, and test commands that cover the same checks expected in CI before work is considered complete.
 
 ## Decision Logs
@@ -47,6 +47,7 @@ These rules are the implementation gate for all work in this repo. Treat them as
 ## Structure and Ownership
 
 - Implementation must use feature/domain folders: `features/<domain>/...`.
+- Every feature domain must have a corresponding spec file: `spec/<domain>.md`.
 - Use `shared/` for domain-agnostic, cross-cutting implementations like routing, UI components, design tokens, and translation.
 - If an implementation touches multiple domains or becomes foundational, place it in `shared/`.
 
@@ -62,11 +63,13 @@ Before marking work complete, confirm:
 - Responsive behavior verified for new/changed frontend UI.
 - Design tokens used; any new token justified and added to the shared token system.
 - Security and accessibility considerations addressed.
-- Evaluation criteria added/updated in `evaluations/` with goal + criteria blocks.
-- Tests reference evaluation criteria IDs per `evaluations/README.md`.
+- Spec behaviors added/updated in the relevant `spec/` file for new/changed features.
+- Tests use descriptive names that map to spec behaviors per `spec/README.md`.
 - Relevant CI-equivalent local validation, build, and test commands were run for the change.
 - Decision log entry added if a new library is recommended.
 - Architectural documentation updated when core architecture changes.
+- Codebase map (`architecture/codebase-map.md`) updated when directories or module-level files are added, removed, or renamed.
+- Domain glossary (`architecture/domain-glossary.md`) updated when new domain concepts are introduced or existing definitions change.
 - Developer startup guide updated if setup, scripts, ports, or env requirements changed.
 - Product-specific gate items satisfied (see `.opencode/rules/product-guidelines.md`).
 - Folder placement follows `features/<domain>/` and `shared/` rules.

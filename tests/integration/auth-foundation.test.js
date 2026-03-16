@@ -9,7 +9,7 @@ function read(file) {
   return fs.readFileSync(path.join(root, file), 'utf8')
 }
 
-test('auth local-first foundation wiring @eval(EVAL-AUTH-LOCAL-001,EVAL-AUTH-LOCAL-002,EVAL-AUTH-LOCAL-003)', () => {
+test('auth local-first foundation wiring', () => {
   const webAuthRoute = read('apps/web/src/routes/auth.tsx')
   const webAuthProvider = read('apps/web/src/features/auth/AuthProvider.tsx')
   const webRouteGuard = read('apps/web/src/features/auth/route-guard.ts')

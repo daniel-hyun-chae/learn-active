@@ -3,18 +3,22 @@ import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../graphql/context.js'
 import { seedCourseRow } from './seed.js'
 import {
+  AttemptAnswer,
   Course,
+  CourseProgress,
   CheckoutChannel,
   CheckoutSession,
   CourseVersionDiff,
   CourseVersionHistory,
   Enrollment,
   EnrollmentStatus,
+  Exercise,
+  LearnerExerciseAttempt,
   MyCourse,
   Payment,
   PublicCourse,
 } from './types.js'
-import { CourseInput } from './inputs.js'
+import { CourseInput, LearnerExerciseAttemptInput } from './inputs.js'
 import { requireAuthenticatedUser } from '../auth/guard.js'
 import {
   isActivelyEnrolled,
@@ -27,6 +31,65 @@ const COURSE_EDIT_FORBIDDEN_MESSAGE =
 
 const DEFAULT_WEB_ORIGIN = 'http://localhost:3000'
 const STRIPE_MIN_EUR_PRICE_CENTS = 50
+
+function normalizeAnswer(value: string | undefined) {
+  return (value ?? '').trim().toLowerCase()
+}
+
+function evaluateExerciseCorrectness(
+  exercise: Exercise,
+  answers: Record<string, string>,
+) {
+  if (exercise.type === 'FILL_IN_THE_BLANK') {
+    const steps = exercise.fillInBlank?.steps ?? []
+    for (const step of steps) {
+      for (const blank of step.blanks) {
+        if (
+          normalizeAnswer(answers[blank.id]) !== normalizeAnswer(blank.correct)
+        ) {
+          return false
+        }
+      }
+    }
+    return true
+  }
+
+  const choices = exercise.multipleChoice?.choices ?? []
+  const selected = new Set(
+    Object.entries(answers)
+      .filter(([, value]) => value === 'true')
+      .map(([key]) => key),
+  )
+  const correct = new Set(
+    choices.filter((choice) => choice.isCorrect).map((choice) => choice.id),
+  )
+  if (selected.size !== correct.size) {
+    return false
+  }
+  for (const choiceId of selected) {
+    if (!correct.has(choiceId)) {
+      return false
+    }
+  }
+  return true
+}
+
+function findLessonExercise(
+  course: Course,
+  lessonId: string,
+  exerciseId: string,
+): Exercise | null {
+  for (const module of course.modules) {
+    for (const lesson of module.lessons) {
+      if (lesson.id !== lessonId) {
+        continue
+      }
+      const exercise = lesson.exercises.find((entry) => entry.id === exerciseId)
+      return exercise ?? null
+    }
+  }
+  return null
+}
 
 function getRequestOrigin(request: Request) {
   const candidates = [
@@ -101,6 +164,18 @@ export class CourseResolver {
     return row ? mapPublisherCourseToCourse(row) : null
   }
 
+  @Query(() => CourseProgress, { nullable: true })
+  async learnerCourseProgress(
+    @Arg('courseId', () => String) courseId: string,
+    @Ctx() ctx: GraphQLContext,
+  ) {
+    const user = requireAuthenticatedUser(ctx)
+    return await ctx.services.courseRepository.getLearnerCourseProgress({
+      userId: user.id,
+      courseId,
+    })
+  }
+
   @Query(() => [PublicCourse])
   async publicCourses(@Ctx() _ctx: GraphQLContext) {
     return await _ctx.services.courseRepository.listPublicCourses()
@@ -146,19 +221,6 @@ export class CourseResolver {
       enrolled: enrollment ? isActivelyEnrolled(enrollment.status) : false,
       status: enrollment?.status ?? null,
     }
-  }
-
-  @Query(() => [Course])
-  async courses(@Ctx() ctx: GraphQLContext) {
-    return this.learnerCourses(ctx)
-  }
-
-  @Query(() => Course, { nullable: true })
-  async course(
-    @Arg('id', () => String) id: string,
-    @Ctx() ctx: GraphQLContext,
-  ) {
-    return this.learnerCourse(id, ctx)
   }
 
   @Query(() => [Course])
@@ -445,5 +507,68 @@ export class CourseResolver {
       courseId,
     })
     return enrollment
+  }
+
+  @Mutation(() => LearnerExerciseAttempt)
+  async upsertLearnerExerciseAttempt(
+    @Arg('input', () => LearnerExerciseAttemptInput)
+    input: LearnerExerciseAttemptInput,
+    @Ctx() ctx: GraphQLContext,
+  ) {
+    const user = requireAuthenticatedUser(ctx)
+
+    const learnerCourse =
+      await ctx.services.courseRepository.getLearnerCourseById({
+        userId: user.id,
+        id: input.courseId,
+      })
+
+    if (!learnerCourse) {
+      throw new GraphQLError('Course is not available to this learner.', {
+        extensions: { code: 'FORBIDDEN' },
+      })
+    }
+
+    if (learnerCourse.versionId !== input.courseVersionId) {
+      throw new GraphQLError(
+        'Course version is not current for this learner enrollment.',
+        { extensions: { code: 'BAD_USER_INPUT' } },
+      )
+    }
+
+    const mappedCourse = mapPublisherCourseToCourse(learnerCourse)
+    const exercise = findLessonExercise(
+      mappedCourse,
+      input.lessonId,
+      input.exerciseId,
+    )
+    if (!exercise) {
+      throw new GraphQLError('Exercise not found for this lesson.', {
+        extensions: { code: 'BAD_USER_INPUT' },
+      })
+    }
+
+    const answers = Object.fromEntries(
+      input.answers.map((entry) => [entry.key, entry.value]),
+    )
+    const isCorrect = evaluateExerciseCorrectness(exercise, answers)
+
+    const saved =
+      await ctx.services.courseRepository.upsertLearnerExerciseAttempt({
+        userId: user.id,
+        courseId: input.courseId,
+        courseVersionId: input.courseVersionId,
+        lessonId: input.lessonId,
+        exerciseId: input.exerciseId,
+        answers,
+        isCorrect,
+      })
+
+    return {
+      ...saved,
+      answers: Object.entries(saved.answers).map(
+        ([key, value]): AttemptAnswer => ({ key, value }),
+      ),
+    }
   }
 }

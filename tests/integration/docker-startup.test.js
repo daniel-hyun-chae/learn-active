@@ -9,7 +9,7 @@ function read(file) {
   return fs.readFileSync(path.join(root, file), 'utf8')
 }
 
-test('docker compose startup @eval(EVAL-PLATFORM-DOCKER-001)', () => {
+test('docker compose startup', () => {
   const compose = read('docker-compose.yml')
 
   assert.ok(compose.includes('api:'))

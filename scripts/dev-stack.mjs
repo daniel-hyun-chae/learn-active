@@ -162,6 +162,44 @@ function resolveSupabaseWebRuntime() {
   }
 }
 
+function resolveSupabaseServiceRoleKey(runtimeEnv) {
+  const configured = pickConfiguredValue(runtimeEnv.SUPABASE_SERVICE_ROLE_KEY)
+  if (configured) {
+    return configured
+  }
+
+  const status = spawnSync(
+    'npx',
+    ['-y', 'supabase@latest', 'status', '-o', 'env'],
+    {
+      encoding: 'utf8',
+      timeout: 30000,
+      maxBuffer: 1024 * 1024,
+      shell: process.platform === 'win32',
+      env: { ...runtimeEnv },
+    },
+  )
+
+  if (status.status !== 0) {
+    const details = `${status.stdout ?? ''}${status.stderr ?? ''}`.trim()
+    const reason = details ? ` (${details})` : ''
+    throw new Error(
+      `[dev-stack] Could not resolve SUPABASE_SERVICE_ROLE_KEY from environment or local supabase status${reason}`,
+    )
+  }
+
+  const parsed = parseEnvAssignments(
+    `${status.stdout ?? ''}\n${status.stderr ?? ''}`,
+  )
+  const key = pickConfiguredValue(parsed.SERVICE_ROLE_KEY)
+  if (!key) {
+    throw new Error(
+      '[dev-stack] Local supabase status output did not include SERVICE_ROLE_KEY',
+    )
+  }
+  return key
+}
+
 async function canListen(port, host) {
   return new Promise((resolve) => {
     const server = net.createServer()
@@ -355,6 +393,7 @@ const apiSupabaseUrl = pickConfiguredValue(
   runtimeEnv.SUPABASE_URL,
   supabaseWebRuntime?.url,
 )
+const apiSupabaseServiceRoleKey = resolveSupabaseServiceRoleKey(runtimeEnv)
 
 if (supabaseWebRuntime) {
   console.log(
@@ -411,6 +450,9 @@ const apiProcess = startMonitoredProcess(
     '--port',
     String(apiPort),
     ...(apiSupabaseUrl ? ['--var', `SUPABASE_URL:${apiSupabaseUrl}`] : []),
+    ...(apiSupabaseServiceRoleKey
+      ? ['--var', `SUPABASE_SERVICE_ROLE_KEY:${apiSupabaseServiceRoleKey}`]
+      : []),
     ...(runtimeEnv.STRIPE_SECRET_KEY
       ? ['--var', `STRIPE_SECRET_KEY:${runtimeEnv.STRIPE_SECRET_KEY}`]
       : []),
@@ -429,6 +471,9 @@ const apiProcess = startMonitoredProcess(
       PORT: String(apiPort),
       APP_ENV: runtimeEnv.APP_ENV ?? 'local',
       ...(effectiveDatabaseUrl ? { DATABASE_URL: effectiveDatabaseUrl } : {}),
+      ...(apiSupabaseServiceRoleKey
+        ? { SUPABASE_SERVICE_ROLE_KEY: apiSupabaseServiceRoleKey }
+        : {}),
     },
   },
 )

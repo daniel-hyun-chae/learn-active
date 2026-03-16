@@ -10,7 +10,7 @@ function read(file) {
   return fs.readFileSync(path.join(root, file), 'utf8')
 }
 
-test('pull request validation workflow wiring @eval(EVAL-PLATFORM-CICD-001)', () => {
+test('pull request validation workflow wiring', () => {
   const workflow = read('.github/workflows/ci-validation.yml')
 
   assert.ok(workflow.includes('name: CI Validation'))
@@ -28,7 +28,7 @@ test('pull request validation workflow wiring @eval(EVAL-PLATFORM-CICD-001)', ()
   )
 })
 
-test('staging deployment workflow wiring @eval(EVAL-PLATFORM-CICD-002,EVAL-PLATFORM-CICD-004)', () => {
+test('staging deployment workflow wiring', () => {
   const workflow = read('.github/workflows/deploy-staging.yml')
 
   assert.ok(workflow.includes('name: Deploy Staging'))
@@ -67,7 +67,7 @@ test('staging deployment workflow wiring @eval(EVAL-PLATFORM-CICD-002,EVAL-PLATF
   assert.ok(workflow.includes('deploy:pages:staging'))
 })
 
-test('production deploy and rollback workflow wiring @eval(EVAL-PLATFORM-CICD-003)', () => {
+test('production deploy and rollback workflow wiring', () => {
   const workflow = read('.github/workflows/deploy-production.yml')
   const apiPackage = read('apps/api/package.json')
   const webPackage = read('apps/web/package.json')
@@ -106,7 +106,7 @@ test('production deploy and rollback workflow wiring @eval(EVAL-PLATFORM-CICD-00
   assert.ok(webPackage.includes('--project-name course-web'))
 })
 
-test('deployment env validation enforces hosted URL contract @eval(EVAL-PLATFORM-CICD-006)', () => {
+test('deployment env validation enforces hosted URL contract', () => {
   const script = path.join(root, 'scripts', 'validate-deploy-env.mjs')
 
   const validOutput = execFileSync(
@@ -153,7 +153,7 @@ test('deployment env validation enforces hosted URL contract @eval(EVAL-PLATFORM
   )
 })
 
-test('built web endpoint verification script validates compiled artifacts @eval(EVAL-PLATFORM-CICD-007)', () => {
+test('built web endpoint verification script validates compiled artifacts', () => {
   const script = path.join(root, 'scripts', 'verify-web-build-endpoint.mjs')
   const tempRoot = fs.mkdtempSync(path.join(root, '.tmp-verify-web-endpoint-'))
 
@@ -222,7 +222,7 @@ test('built web endpoint verification script validates compiled artifacts @eval(
   }
 })
 
-test('hosted api health verification script validates deployed worker responses @eval(EVAL-PLATFORM-CICD-002,EVAL-PLATFORM-CICD-003)', () => {
+test('hosted api health verification script validates deployed worker responses', () => {
   const script = path.join(root, 'scripts', 'verify-hosted-api-health.mjs')
   const tempRoot = fs.mkdtempSync(
     path.join(root, '.tmp-verify-hosted-api-health-'),
@@ -262,7 +262,7 @@ test('hosted api health verification script validates deployed worker responses 
   }
 })
 
-test('cicd documentation and readme linking @eval(EVAL-PLATFORM-CICD-005)', () => {
+test('cicd documentation and readme linking', () => {
   const docs = read('architecture/ci-cd.md')
   const readme = read('README.md')
 

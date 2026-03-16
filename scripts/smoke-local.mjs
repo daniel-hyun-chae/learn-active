@@ -2,6 +2,10 @@ import { spawn, spawnSync } from 'node:child_process'
 import path from 'node:path'
 import net from 'node:net'
 import { runBrowserChecks } from './browser-check.mjs'
+import {
+  loadLocalRuntimeEnv,
+  parseEnvAssignments,
+} from './lib/local-runtime-env.mjs'
 
 const pnpmCmd = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
 
@@ -230,6 +234,76 @@ async function assertLesson(url) {
   }
 }
 
+function pickConfiguredValue(...candidates) {
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string') {
+      continue
+    }
+    const value = candidate.trim()
+    if (value) {
+      return value
+    }
+  }
+  return ''
+}
+
+function resolveSupabaseRuntime(env) {
+  const configuredUrl = pickConfiguredValue(env.SUPABASE_URL)
+  const configuredServiceRoleKey = pickConfiguredValue(
+    env.SUPABASE_SERVICE_ROLE_KEY,
+  )
+
+  if (configuredUrl && configuredServiceRoleKey) {
+    return {
+      supabaseUrl: configuredUrl,
+      serviceRoleKey: configuredServiceRoleKey,
+    }
+  }
+
+  const status = spawnSync(
+    'npx',
+    ['-y', 'supabase@latest', 'status', '-o', 'env'],
+    {
+      encoding: 'utf8',
+      shell: process.platform === 'win32',
+      env: { ...env },
+      timeout: 30000,
+      maxBuffer: 1024 * 1024,
+    },
+  )
+
+  if (status.error) {
+    throw status.error
+  }
+
+  if (status.status !== 0) {
+    const details = `${status.stdout ?? ''}${status.stderr ?? ''}`.trim()
+    throw new Error(
+      `Unable to resolve local Supabase runtime from supabase status: ${details}`,
+    )
+  }
+
+  const parsed = parseEnvAssignments(
+    `${status.stdout ?? ''}\n${status.stderr ?? ''}`,
+  )
+  const supabaseUrl = pickConfiguredValue(configuredUrl, parsed.API_URL)
+  const serviceRoleKey = pickConfiguredValue(
+    configuredServiceRoleKey,
+    parsed.SERVICE_ROLE_KEY,
+  )
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error(
+      'Supabase local runtime is missing API_URL or SERVICE_ROLE_KEY values',
+    )
+  }
+
+  return {
+    supabaseUrl,
+    serviceRoleKey,
+  }
+}
+
 function shutdown(processes) {
   for (const proc of processes) {
     if (!proc.killed) {
@@ -239,12 +313,13 @@ function shutdown(processes) {
 }
 
 console.log('[smoke] Building apps...')
+const runtimeEnv = loadLocalRuntimeEnv(process.cwd(), process.env)
+const supabaseRuntime = resolveSupabaseRuntime(runtimeEnv)
 const reserved = new Set()
-const preferredApiPort = Number(process.env.API_PORT ?? 4000)
-const preferredWebPort = Number(process.env.WEB_PORT ?? 4100)
+const preferredApiPort = Number(runtimeEnv.API_PORT ?? 4000)
+const preferredWebPort = Number(runtimeEnv.WEB_PORT ?? 4100)
 const dynamicSmokePorts =
-  process.env.DYNAMIC_SMOKE_PORTS === '1' ||
-  process.env.DYNAMIC_DEV_PORTS === '1'
+  runtimeEnv.DYNAMIC_SMOKE_PORTS === '1' || runtimeEnv.DYNAMIC_DEV_PORTS === '1'
 
 let apiPort
 let webPort
@@ -267,7 +342,7 @@ if (dynamicSmokePorts) {
 const build = run(pnpmCmd, ['build'], {
   shell: process.platform === 'win32',
   env: {
-    ...process.env,
+    ...runtimeEnv,
     VITE_GRAPHQL_ENDPOINT: `http://localhost:${apiPort}/graphql`,
   },
 })
@@ -295,14 +370,18 @@ build.on('exit', async (code) => {
       '--port',
       String(apiPort),
       '--var',
-      `SUPABASE_URL:${process.env.SUPABASE_URL ?? 'http://127.0.0.1:54321'}`,
+      `SUPABASE_URL:${supabaseRuntime.supabaseUrl}`,
+      '--var',
+      `SUPABASE_SERVICE_ROLE_KEY:${supabaseRuntime.serviceRoleKey}`,
     ],
     {
       shell: process.platform === 'win32',
       env: {
-        ...process.env,
+        ...runtimeEnv,
         PORT: String(apiPort),
-        APP_ENV: process.env.APP_ENV ?? 'local',
+        APP_ENV: runtimeEnv.APP_ENV ?? 'local',
+        SUPABASE_URL: supabaseRuntime.supabaseUrl,
+        SUPABASE_SERVICE_ROLE_KEY: supabaseRuntime.serviceRoleKey,
       },
     },
   )
@@ -324,7 +403,7 @@ build.on('exit', async (code) => {
     {
       shell: process.platform === 'win32',
       env: {
-        ...process.env,
+        ...runtimeEnv,
         PORT: String(webPort),
         GRAPHQL_ENDPOINT: `http://localhost:${apiPort}/graphql`,
         VITE_GRAPHQL_ENDPOINT: `http://localhost:${apiPort}/graphql`,

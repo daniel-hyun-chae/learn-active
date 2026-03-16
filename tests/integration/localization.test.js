@@ -9,7 +9,7 @@ function read(file) {
   return fs.readFileSync(path.join(root, file), 'utf8')
 }
 
-test('localization readiness @eval(EVAL-PLATFORM-INIT-002,EVAL-AUTH-LOCAL-001)', () => {
+test('localization readiness', () => {
   const webRoot = read('apps/web/src/routes/__root.tsx')
   const mobileApp = read('apps/learners-mobile/src/App.tsx')
   const resources = read('shared/shared-i18n/src/resources.ts')

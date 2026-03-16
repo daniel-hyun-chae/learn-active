@@ -9,7 +9,7 @@ function read(file) {
   return fs.readFileSync(path.join(root, file), 'utf8')
 }
 
-test('course versioning, catalog, enrollment, and checkout wiring @eval(EVAL-PUBLISHERS-COURSE-006,EVAL-PUBLISHERS-COURSE-007,EVAL-LEARNERS-COURSE-006,EVAL-LEARNERS-COURSE-007,EVAL-LEARNERS-COURSE-008,EVAL-LEARNERS-COURSE-009,EVAL-LEARNERS-COURSE-010)', () => {
+test('course versioning, catalog, enrollment, and checkout wiring', () => {
   const migration = read(
     'supabase/migrations/0004_course_versioning_catalog_enrollment.sql',
   )
@@ -19,6 +19,11 @@ test('course versioning, catalog, enrollment, and checkout wiring @eval(EVAL-PUB
   const schema = read('apps/api/src/db/schema.ts')
   const resolver = read('apps/api/src/features/course/resolver.ts')
   const repository = read('apps/api/src/features/course/repository.ts')
+  const repositoryDb = read('apps/api/src/features/course/repository-db.ts')
+  const services = read('apps/api/src/runtime/services.ts')
+  const devStack = read('scripts/dev-stack.mjs')
+  const smoke = read('scripts/smoke-local.mjs')
+  const publisherE2E = read('tests/e2e/publisher-flows.test.js')
   const apiApp = read('apps/api/src/app.ts')
   const stripeService = read('apps/api/src/runtime/stripe.ts')
   const routeCatalog = read('apps/web/src/routes/courses.tsx')
@@ -71,14 +76,30 @@ test('course versioning, catalog, enrollment, and checkout wiring @eval(EVAL-PUB
   assert.ok(resolver.includes('async myPayments('))
   assert.ok(resolver.includes('async courseEnrollmentStatus('))
 
-  assert.ok(!repository.includes('courseVersionId'))
-  assert.ok(repository.includes('publicationByCourse'))
+  assert.ok(repository.includes('courseVersionId'))
+  assert.ok(repository.includes('createNodePostgresCourseRepository'))
+  assert.ok(repository.includes('createWorkerSupabaseCourseRepositoryImpl'))
   assert.ok(repository.includes('enrollInCourse'))
   assert.ok(repository.includes('publishCourseDraft'))
   assert.ok(repository.includes('createDraftFromPublished'))
   assert.ok(repository.includes('restoreVersionAsDraft'))
   assert.ok(repository.includes('recordStripePayment'))
   assert.ok(repository.includes('ensureEnrollmentForPaidCourse'))
+
+  assert.ok(repositoryDb.includes('createNodePostgresCourseRepository'))
+  assert.ok(repositoryDb.includes('createWorkerSupabaseCourseRepositoryImpl'))
+  assert.ok(repositoryDb.includes('public.provision_personal_owner'))
+
+  assert.ok(services.includes('DATABASE_URL is required'))
+  assert.ok(
+    services.includes(
+      'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required for worker runtime course repository',
+    ),
+  )
+
+  assert.ok(devStack.includes('SUPABASE_SERVICE_ROLE_KEY'))
+  assert.ok(smoke.includes('SUPABASE_SERVICE_ROLE_KEY'))
+  assert.ok(publisherE2E.includes('SUPABASE_SERVICE_ROLE_KEY'))
 
   assert.ok(apiApp.includes('handleStripeWebhook'))
   assert.ok(apiApp.includes('stripe-signature'))

@@ -100,6 +100,13 @@ export const resources = {
       'learners.structure.exercise': 'Exercise',
       'learners.structure.show': 'Show structure',
       'learners.structure.hide': 'Hide structure',
+      'learners.progress.lessonSummary':
+        '{{completed}} of {{total}} exercises completed',
+      'learners.progress.courseSummary':
+        '{{completed}} of {{total}} exercises completed in course',
+      'learners.progress.modulePercent': 'Module {{percent}}% complete',
+      'learners.progress.exerciseStatusAttempted': 'Attempted',
+      'learners.progress.exerciseStatusCorrect': 'Correct',
       'learners.exercise.contextTitle': 'Conversation context',
       'learners.exercise.contextEmpty':
         'This is the first sentence in the sequence.',
@@ -112,6 +119,14 @@ export const resources = {
       'learners.exercise.fillAll': 'Fill in all blanks to continue.',
       'learners.exercise.inputAria': 'Answer for blank {{blank}}',
       'learners.exercise.blankPlaceholder': 'Select',
+      'learners.exercise.multipleChoice.selectOne':
+        'Select one answer to continue.',
+      'learners.exercise.multipleChoice.selectMany':
+        'Select one or more answers to continue.',
+      'learners.exercise.multipleChoice.submit': 'Check answer',
+      'learners.exercise.multipleChoice.correct': 'Correct answer.',
+      'learners.exercise.multipleChoice.incorrect':
+        'Not quite right, try another choice.',
       'publishers.nav.skip': 'Skip to content',
       'publishers.nav.courses': 'Courses',
       'publishers.nav.quizzes': 'Quizzes',
@@ -200,6 +215,9 @@ export const resources = {
       'publishers.exercise.add': 'Add exercise',
       'publishers.exercise.name': 'Exercise title',
       'publishers.exercise.newTitle': 'Fill in the blank',
+      'publishers.exercise.type': 'Exercise type',
+      'publishers.exercise.typeFillInBlank': 'Fill in the blank',
+      'publishers.exercise.typeMultipleChoice': 'Multiple choice',
       'publishers.exercise.instructions': 'Instructions',
       'publishers.exercise.prompt': 'Prompt',
       'publishers.exercise.promptPlaceholder':
@@ -212,6 +230,15 @@ export const resources = {
       'publishers.exercise.variantTyping': 'Typing',
       'publishers.exercise.correct': 'Correct answer',
       'publishers.exercise.options': 'Options (comma separated)',
+      'publishers.exercise.multipleChoice.defaultQuestion':
+        'Choose the correct answer.',
+      'publishers.exercise.multipleChoice.choicePlaceholder': 'New choice',
+      'publishers.exercise.multipleChoice.question': 'Question',
+      'publishers.exercise.multipleChoice.allowMany':
+        'Allow multiple correct choices',
+      'publishers.exercise.multipleChoice.addChoice': 'Add choice',
+      'publishers.exercise.multipleChoice.choiceText': 'Choice text',
+      'publishers.exercise.multipleChoice.correctChoice': 'Correct choice',
       'publishers.exercise.empty': 'No exercises added yet.',
       'publishers.actions.delete': 'Delete',
       'publishers.actions.move': 'Move',

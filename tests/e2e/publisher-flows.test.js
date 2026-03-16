@@ -438,16 +438,18 @@ function resolveSupabaseRuntime() {
   )
   const supabaseUrl = parsed.API_URL?.trim()
   const publishableKey = parsed.ANON_KEY?.trim()
+  const serviceRoleKey = parsed.SERVICE_ROLE_KEY?.trim()
 
-  if (!supabaseUrl || !publishableKey) {
+  if (!supabaseUrl || !publishableKey || !serviceRoleKey) {
     throw new Error(
-      'Supabase local runtime is missing API_URL or ANON_KEY values',
+      'Supabase local runtime is missing API_URL, ANON_KEY, or SERVICE_ROLE_KEY values',
     )
   }
 
   return {
     supabaseUrl,
     publishableKey,
+    serviceRoleKey,
   }
 }
 
@@ -544,6 +546,37 @@ function httpRequest(urlString, options = {}) {
     }
     request.end()
   })
+}
+
+async function supabaseRestRequest({
+  supabaseUrl,
+  serviceRoleKey,
+  path,
+  method = 'GET',
+  body,
+}) {
+  const response = await httpRequest(`${supabaseUrl}/rest/v1/${path}`, {
+    method,
+    headers: {
+      apikey: serviceRoleKey,
+      authorization: `Bearer ${serviceRoleKey}`,
+      'content-type': 'application/json',
+      ...(method === 'GET' ? {} : { prefer: 'return=representation' }),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  })
+
+  let parsed = null
+  try {
+    parsed = response.body ? JSON.parse(response.body) : null
+  } catch {
+    parsed = null
+  }
+
+  return {
+    ...response,
+    json: parsed,
+  }
 }
 
 function waitForExit(proc, timeoutMs = 5000) {
@@ -731,6 +764,13 @@ before(async () => {
     },
   })
 
+  spawnSyncChecked(process.execPath, ['scripts/dev-db.mjs', 'push'], {
+    shell: process.platform === 'win32',
+    env: {
+      ...process.env,
+    },
+  })
+
   const supabaseRuntime = resolveSupabaseRuntime()
   const reserved = new Set()
   stack.apiPort = await findAvailablePort(4000, reserved)
@@ -780,6 +820,8 @@ before(async () => {
       String(stack.apiPort),
       '--var',
       `SUPABASE_URL:${supabaseRuntime.supabaseUrl}`,
+      '--var',
+      `SUPABASE_SERVICE_ROLE_KEY:${supabaseRuntime.serviceRoleKey}`,
       ...(stripeSecretKey
         ? ['--var', `STRIPE_SECRET_KEY:${stripeSecretKey}`]
         : []),
@@ -798,6 +840,7 @@ before(async () => {
         PORT: String(stack.apiPort),
         APP_ENV: 'local',
         SUPABASE_URL: supabaseRuntime.supabaseUrl,
+        SUPABASE_SERVICE_ROLE_KEY: supabaseRuntime.serviceRoleKey,
         ...(stripeSecretKey ? { STRIPE_SECRET_KEY: stripeSecretKey } : {}),
         ...(stripePublishableKey
           ? { STRIPE_PUBLISHABLE_KEY: stripePublishableKey }
@@ -886,7 +929,7 @@ after(async () => {
 })
 
 test(
-  'publisher auth fixture stores reusable magic-link session @eval(EVAL-AUTH-LOCAL-005)',
+  'publisher auth fixture stores reusable magic-link session',
   { timeout: 60000 },
   async () => {
     assert.equal(
@@ -913,7 +956,7 @@ test(
           'content-type': 'application/json',
           authorization: `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({ query: '{ courses { id } }' }),
+        body: JSON.stringify({ query: '{ learnerCourses { id } }' }),
       },
     )
     assert.equal(response.statusCode, 200)
@@ -927,14 +970,167 @@ test(
         : 'unexpected GraphQL error array',
     )
     assert.ok(
-      Array.isArray(payload?.data?.courses),
-      'courses query should return data',
+      Array.isArray(payload?.data?.learnerCourses),
+      'learnerCourses query should return data',
     )
   },
 )
 
 test(
-  'publisher landing and block authoring flow @eval(EVAL-PUBLISHERS-COURSE-001,EVAL-PUBLISHERS-COURSE-002,EVAL-PUBLISHERS-COURSE-003,EVAL-PUBLISHERS-COURSE-004)',
+  'personal ownership provisioning and invariants are enforced end-to-end',
+  { timeout: 120000 },
+  async () => {
+    const publisherToken = extractAccessTokenFromStorageState(
+      stack.authStoragePath,
+    )
+    const publisherClaims = decodeJwtPayload(publisherToken)
+    const publisherUserId = String(publisherClaims.sub ?? '')
+    assert.ok(
+      publisherUserId,
+      'publisher access token should contain sub claim',
+    )
+
+    const supabaseRuntime = resolveSupabaseRuntime()
+
+    const firstPublisherCourses = await graphqlRequest({
+      token: publisherToken,
+      query: `query PublisherCourses {
+        publisherCourses {
+          id
+          title
+        }
+      }`,
+    })
+
+    const secondPublisherCourses = await graphqlRequest({
+      token: publisherToken,
+      query: `query PublisherCourses {
+        publisherCourses {
+          id
+          title
+        }
+      }`,
+    })
+
+    assert.deepEqual(
+      secondPublisherCourses.publisherCourses,
+      firstPublisherCourses.publisherCourses,
+      'publisher owner provisioning should be idempotent across repeated calls',
+    )
+
+    const ownerLookup = await supabaseRestRequest({
+      supabaseUrl: supabaseRuntime.supabaseUrl,
+      serviceRoleKey: supabaseRuntime.serviceRoleKey,
+      path: `owners?select=id,type,personal_user_id&personal_user_id=eq.${publisherUserId}&type=eq.user`,
+    })
+    assert.equal(ownerLookup.statusCode, 200, ownerLookup.body)
+    assert.equal(Array.isArray(ownerLookup.json), true)
+    assert.equal(ownerLookup.json.length, 1)
+
+    const personalOwnerId = String(ownerLookup.json[0].id)
+    assert.ok(personalOwnerId, 'personal owner id should be persisted')
+
+    const ownerMembershipLookup = await supabaseRestRequest({
+      supabaseUrl: supabaseRuntime.supabaseUrl,
+      serviceRoleKey: supabaseRuntime.serviceRoleKey,
+      path: `owner_members?select=id,owner_id,user_id,role&owner_id=eq.${personalOwnerId}&user_id=eq.${publisherUserId}`,
+    })
+    assert.equal(
+      ownerMembershipLookup.statusCode,
+      200,
+      ownerMembershipLookup.body,
+    )
+    assert.equal(Array.isArray(ownerMembershipLookup.json), true)
+    assert.equal(ownerMembershipLookup.json.length, 1)
+    assert.equal(ownerMembershipLookup.json[0].role, 'owner')
+
+    const invalidRoleUpdate = await supabaseRestRequest({
+      supabaseUrl: supabaseRuntime.supabaseUrl,
+      serviceRoleKey: supabaseRuntime.serviceRoleKey,
+      method: 'PATCH',
+      path: `owner_members?owner_id=eq.${personalOwnerId}&user_id=eq.${publisherUserId}`,
+      body: { role: 'editor' },
+    })
+    assert.equal(
+      invalidRoleUpdate.statusCode >= 400,
+      true,
+      invalidRoleUpdate.body,
+    )
+    assert.equal(
+      invalidRoleUpdate.body.includes('Personal owner invariant violation'),
+      true,
+      invalidRoleUpdate.body,
+    )
+
+    const invalidDelete = await supabaseRestRequest({
+      supabaseUrl: supabaseRuntime.supabaseUrl,
+      serviceRoleKey: supabaseRuntime.serviceRoleKey,
+      method: 'DELETE',
+      path: `owner_members?owner_id=eq.${personalOwnerId}&user_id=eq.${publisherUserId}`,
+    })
+    assert.equal(invalidDelete.statusCode >= 400, true, invalidDelete.body)
+    assert.equal(
+      invalidDelete.body.includes('Personal owner invariant violation'),
+      true,
+      invalidDelete.body,
+    )
+
+    const ownerMembershipAfterInvalidMutations = await supabaseRestRequest({
+      supabaseUrl: supabaseRuntime.supabaseUrl,
+      serviceRoleKey: supabaseRuntime.serviceRoleKey,
+      path: `owner_members?select=id,owner_id,user_id,role&owner_id=eq.${personalOwnerId}&user_id=eq.${publisherUserId}`,
+    })
+    assert.equal(
+      ownerMembershipAfterInvalidMutations.statusCode,
+      200,
+      ownerMembershipAfterInvalidMutations.body,
+    )
+    assert.equal(Array.isArray(ownerMembershipAfterInvalidMutations.json), true)
+    assert.equal(ownerMembershipAfterInvalidMutations.json.length, 1)
+    assert.equal(ownerMembershipAfterInvalidMutations.json[0].role, 'owner')
+
+    const systemOwnerLookup = await supabaseRestRequest({
+      supabaseUrl: supabaseRuntime.supabaseUrl,
+      serviceRoleKey: supabaseRuntime.serviceRoleKey,
+      path: 'owners?select=id&type=eq.system',
+    })
+    assert.equal(systemOwnerLookup.statusCode, 200, systemOwnerLookup.body)
+    assert.equal(Array.isArray(systemOwnerLookup.json), true)
+    assert.equal(systemOwnerLookup.json.length >= 1, true)
+    const systemOwnerId = String(systemOwnerLookup.json[0].id)
+
+    const systemCoursesLookup = await supabaseRestRequest({
+      supabaseUrl: supabaseRuntime.supabaseUrl,
+      serviceRoleKey: supabaseRuntime.serviceRoleKey,
+      path: `courses?select=id&owner_id=eq.${systemOwnerId}`,
+    })
+    assert.equal(systemCoursesLookup.statusCode, 200, systemCoursesLookup.body)
+    assert.equal(Array.isArray(systemCoursesLookup.json), true)
+
+    const systemCourseIds = new Set(
+      systemCoursesLookup.json.map((row) => String(row.id)),
+    )
+
+    const finalPublisherCourses = await graphqlRequest({
+      token: publisherToken,
+      query: `query PublisherCourses {
+        publisherCourses {
+          id
+        }
+      }`,
+    })
+    assert.equal(
+      finalPublisherCourses.publisherCourses.some((course) =>
+        systemCourseIds.has(course.id),
+      ),
+      false,
+      'legacy system-owner courses must not be editable via personal publisher queries',
+    )
+  },
+)
+
+test(
+  'publisher landing and block authoring flow',
   { timeout: 300000 },
   async () => {
     const browser = await chromium.launch({
@@ -1306,7 +1502,7 @@ test(
 )
 
 test(
-  'paid course publication and enrollment flow @eval(EVAL-PUBLISHERS-COURSE-007,EVAL-LEARNERS-COURSE-008,EVAL-LEARNERS-COURSE-009)',
+  'paid course publication and enrollment flow',
   { timeout: 240000 },
   async (t) => {
     if (!hasStripeE2EConfig) {
@@ -1493,7 +1689,7 @@ test(
 )
 
 test(
-  'paid course enrollment also succeeds for async Stripe success webhook @eval(EVAL-LEARNERS-COURSE-009,EVAL-LEARNERS-COURSE-010)',
+  'paid course enrollment also succeeds for async Stripe success webhook',
   { timeout: 240000 },
   async (t) => {
     if (!hasStripeE2EConfig) {
@@ -1645,7 +1841,7 @@ test(
 )
 
 test(
-  'real Stripe hosted checkout updates purchase success UI to enrolled @eval(EVAL-LEARNERS-COURSE-008,EVAL-LEARNERS-COURSE-009,EVAL-LEARNERS-COURSE-010)',
+  'real Stripe hosted checkout updates purchase success UI to enrolled',
   { timeout: 360000 },
   async (t) => {
     if (!hasStripeE2EConfig) {

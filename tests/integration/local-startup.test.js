@@ -9,7 +9,7 @@ function read(file) {
   return fs.readFileSync(path.join(root, file), 'utf8')
 }
 
-test('local startup scripts @eval(EVAL-PLATFORM-LOCAL-001,EVAL-PLATFORM-LOCAL-003,EVAL-PLATFORM-LOCAL-004,EVAL-PLATFORM-LOCAL-005,EVAL-PLATFORM-LOCAL-008,EVAL-PLATFORM-LOCAL-010,EVAL-PLATFORM-LOCAL-011,EVAL-PLATFORM-LOCAL-012)', () => {
+test('local startup scripts', () => {
   const pkg = JSON.parse(read('package.json'))
   assert.ok(pkg.scripts.dev)
   assert.ok(pkg.scripts['dev:cleanup'])
@@ -74,7 +74,7 @@ test('local startup scripts @eval(EVAL-PLATFORM-LOCAL-001,EVAL-PLATFORM-LOCAL-00
   assert.ok(dbConnection.includes('return null'))
 })
 
-test('dev command orchestrates setup and stack @eval(EVAL-PLATFORM-LOCAL-002)', () => {
+test('dev command orchestrates setup and stack', () => {
   const pkg = JSON.parse(read('package.json'))
   assert.ok(pkg.scripts.dev)
   const dev = read('scripts/dev.mjs')
@@ -111,7 +111,7 @@ test('dev command orchestrates setup and stack @eval(EVAL-PLATFORM-LOCAL-002)', 
   assert.ok(!viteConfig.includes('routes-alias'))
 })
 
-test('devcontainer db helper workflow @eval(EVAL-PLATFORM-LOCAL-006,EVAL-PLATFORM-LOCAL-007,EVAL-PLATFORM-LOCAL-009)', () => {
+test('devcontainer db helper workflow', () => {
   const pkg = JSON.parse(read('package.json'))
   assert.ok(pkg.scripts.dev)
   assert.ok(pkg.scripts['db:up'])
@@ -155,7 +155,7 @@ test('devcontainer db helper workflow @eval(EVAL-PLATFORM-LOCAL-006,EVAL-PLATFOR
   assert.ok(dockerfile.includes('install-deps chromium'))
 })
 
-test('devcontainer opencode auth mount @eval(EVAL-PLATFORM-DEVCONTAINER-001)', () => {
+test('devcontainer opencode auth mount', () => {
   const devcontainer = JSON.parse(read('.devcontainer/devcontainer.json'))
   const remoteUser = devcontainer.remoteUser
   const mounts = devcontainer.mounts || []
@@ -166,7 +166,7 @@ test('devcontainer opencode auth mount @eval(EVAL-PLATFORM-DEVCONTAINER-001)', (
   assert.ok(authMount.includes(`target=${expectedAuthTarget}`))
 })
 
-test('worker cache key tracks Stripe bindings @eval(EVAL-PUBLISHERS-COURSE-007)', () => {
+test('worker cache key tracks Stripe bindings', () => {
   const worker = read('apps/api/src/worker.ts')
   assert.ok(
     worker.includes(
@@ -185,7 +185,7 @@ test('worker cache key tracks Stripe bindings @eval(EVAL-PUBLISHERS-COURSE-007)'
   )
 })
 
-test('devcontainer compose user alignment @eval(EVAL-PLATFORM-DEVCONTAINER-001)', () => {
+test('devcontainer compose user alignment', () => {
   const devcontainer = JSON.parse(read('.devcontainer/devcontainer.json'))
   const remoteUser = devcontainer.remoteUser
   const compose = read('docker-compose.devcontainer.yml')

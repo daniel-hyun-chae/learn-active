@@ -3,14 +3,14 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useTranslation } from 'react-i18next'
 import { tokens } from '@app/shared-tokens'
 import type {
-  Exercise,
+  FillInBlankExercise as FillInBlankExerciseType,
   ExerciseBlank,
   ExerciseStep,
   SentenceSegment,
 } from '../types'
 
 type FillInBlankExerciseProps = {
-  exercise: Exercise
+  exercise: FillInBlankExerciseType
 }
 
 type StepAnswers = Record<string, string>
@@ -32,12 +32,19 @@ function sortSteps(steps: ExerciseStep[]) {
 
 export function FillInBlankExercise({ exercise }: FillInBlankExerciseProps) {
   const { t } = useTranslation()
-  const steps = useMemo(() => sortSteps(exercise.steps), [exercise.steps])
+  const exerciseSteps = exercise.fillInBlank?.steps ?? []
+  const steps = useMemo(() => sortSteps(exerciseSteps), [exerciseSteps])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [answersByStep, setAnswersByStep] = useState<
     Record<string, StepAnswers>
   >({})
   const [activeBlankId, setActiveBlankId] = useState<string | null>(null)
+
+  if (steps.length === 0) {
+    return (
+      <Text style={styles.missingText}>{t('learners.lesson.noExercise')}</Text>
+    )
+  }
 
   const currentStep = steps[currentIndex]
   const currentAnswers = answersByStep[currentStep.id] ?? {}
@@ -251,6 +258,10 @@ export function FillInBlankExercise({ exercise }: FillInBlankExerciseProps) {
 }
 
 const styles = StyleSheet.create({
+  missingText: {
+    color: tokens.color.muted,
+    fontSize: tokens.font.size.sm,
+  },
   container: {
     gap: tokens.spacing.md,
   },

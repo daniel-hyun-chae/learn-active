@@ -1,13 +1,23 @@
 import { randomUUID } from 'node:crypto'
 import type { createNodeDb } from '../../db/connection.js'
 import type {
+  CourseProgressRecord,
   CourseVersionDiffRecord,
   CourseVersionHistoryRecord,
+  LearnerExerciseAttemptRecord,
+  ModuleProgressRecord,
+  LessonProgressRecord,
+  ExerciseAttemptStatusRecord,
   EnrollmentRecord,
   PaymentRecord,
   PublicCourseRecord,
   PublisherCourseRecord,
 } from './model.js'
+import type { CourseRepository, CourseWriteRow } from './repository-contract.js'
+import {
+  createNodePostgresCourseRepository,
+  createWorkerSupabaseCourseRepositoryImpl,
+} from './repository-db.js'
 import { seedCourseRow } from './seed.js'
 
 type NodeDb = NonNullable<Awaited<ReturnType<typeof createNodeDb>>>
@@ -39,113 +49,7 @@ type CourseVersion = {
 type EnrollmentRow = EnrollmentRecord
 type PaymentRow = PaymentRecord
 
-type CourseWriteRow = {
-  id: string
-  title: string
-  description: string
-  priceCents: number | null
-  currency: string
-  stripePriceId: string | null
-  content: { modules: PublisherCourseRecord['content']['modules'] }
-}
-
-export type CourseRepository = {
-  provisionPersonalOwner: (args: {
-    userId: string
-    email: string | null
-  }) => Promise<{ ownerId: string }>
-  listPublicCourses: () => Promise<PublicCourseRecord[]>
-  getPublicCourseById: (id: string) => Promise<PublicCourseRecord | null>
-  getPublicCourseBySlug: (slug: string) => Promise<PublicCourseRecord | null>
-  getEnrollmentForUserCourse: (args: {
-    userId: string
-    courseId: string
-  }) => Promise<EnrollmentRecord | null>
-  enrollInCourse: (args: {
-    userId: string
-    courseId: string
-  }) => Promise<EnrollmentRecord>
-  listMyPayments: (args: { userId: string }) => Promise<PaymentRecord[]>
-  recordStripePayment: (args: {
-    userId: string
-    courseId: string
-    stripeSessionId: string
-    stripePaymentIntentId: string | null
-    amountCents: number
-    currency: string
-    status: string
-  }) => Promise<PaymentRecord>
-  ensureEnrollmentForPaidCourse: (args: {
-    userId: string
-    courseId: string
-  }) => Promise<EnrollmentRecord>
-  listMyCourses: (args: { userId: string }) => Promise<
-    Array<{
-      id: string
-      slug: string
-      title: string
-      description: string
-      version: number
-      status: string
-      enrolledAt: string
-    }>
-  >
-  listLearnerCourses: (args: {
-    userId: string
-  }) => Promise<PublisherCourseRecord[]>
-  getLearnerCourseById: (args: {
-    userId: string
-    id: string
-  }) => Promise<PublisherCourseRecord | null>
-  listPublisherCourses: (args: {
-    userId: string
-    email: string | null
-  }) => Promise<PublisherCourseRecord[]>
-  getPublisherCourseById: (args: {
-    userId: string
-    email: string | null
-    id: string
-  }) => Promise<PublisherCourseRecord | null>
-  upsertPublisherCourse: (args: {
-    userId: string
-    email: string | null
-    row: CourseWriteRow
-  }) => Promise<PublisherCourseRecord>
-  seedPublisherSampleCourse: (args: {
-    userId: string
-    email: string | null
-    row: CourseWriteRow
-  }) => Promise<PublisherCourseRecord>
-  createDraftFromPublished: (args: {
-    userId: string
-    email: string | null
-    courseId: string
-  }) => Promise<PublisherCourseRecord>
-  publishCourseDraft: (args: {
-    userId: string
-    email: string | null
-    courseId: string
-    changeNote?: string | null
-  }) => Promise<PublisherCourseRecord>
-  restoreVersionAsDraft: (args: {
-    userId: string
-    email: string | null
-    courseId: string
-    versionId: string
-  }) => Promise<PublisherCourseRecord>
-  listCourseVersionHistory: (args: {
-    userId: string
-    email: string | null
-    courseId: string
-  }) => Promise<CourseVersionHistoryRecord[]>
-  diffCourseVersions: (args: {
-    userId: string
-    email: string | null
-    courseId: string
-    fromVersionId: string
-    toVersionId: string
-  }) => Promise<CourseVersionDiffRecord>
-}
+export type { CourseRepository, CourseWriteRow } from './repository-contract.js'
 
 function slugify(input: string): string {
   const base = input
@@ -171,6 +75,7 @@ type MemoryState = {
   publicationByCourse: Map<string, string>
   enrollments: Map<string, EnrollmentRow>
   paymentsBySession: Map<string, PaymentRow>
+  learnerAttemptsByKey: Map<string, LearnerExerciseAttemptRecord>
 }
 
 function buildInitialState(): MemoryState {
@@ -181,6 +86,7 @@ function buildInitialState(): MemoryState {
     publicationByCourse: new Map(),
     enrollments: new Map(),
     paymentsBySession: new Map(),
+    learnerAttemptsByKey: new Map(),
   }
 
   const courseId = seedCourseRow.id
@@ -243,6 +149,97 @@ function flattenJson(
 
   out.set(prefix || '$', JSON.stringify(value))
   return out
+}
+
+function toPercent(completed: number, total: number) {
+  if (total <= 0) {
+    return 0
+  }
+  return Math.round((completed / total) * 100)
+}
+
+function buildCourseProgressFromContent(args: {
+  courseId: string
+  courseVersionId: string
+  content: PublisherCourseRecord['content']
+  attempts: LearnerExerciseAttemptRecord[]
+}): CourseProgressRecord {
+  const attemptsByLessonExercise = new Map<
+    string,
+    LearnerExerciseAttemptRecord
+  >()
+  for (const attempt of args.attempts) {
+    attemptsByLessonExercise.set(
+      `${attempt.lessonId}:${attempt.exerciseId}`,
+      attempt,
+    )
+  }
+
+  const modules: ModuleProgressRecord[] = args.content.modules.map((module) => {
+    const lessons: LessonProgressRecord[] = module.lessons.map((lesson) => {
+      const exerciseAttempts: ExerciseAttemptStatusRecord[] =
+        lesson.exercises.map((exercise) => {
+          const attempt = attemptsByLessonExercise.get(
+            `${lesson.id}:${exercise.id}`,
+          )
+
+          return {
+            exerciseId: exercise.id,
+            attempted: Boolean(attempt),
+            isCorrect: attempt ? attempt.isCorrect : null,
+            attemptedAt: attempt ? attempt.attemptedAt : null,
+          }
+        })
+
+      const totalExercises = exerciseAttempts.length
+      const completedExercises = exerciseAttempts.filter(
+        (attempt) => attempt.attempted,
+      ).length
+
+      return {
+        lessonId: lesson.id,
+        completedExercises,
+        totalExercises,
+        percentComplete: toPercent(completedExercises, totalExercises),
+        exerciseAttempts,
+      }
+    })
+
+    const totalExercises = lessons.reduce(
+      (sum, lesson) => sum + lesson.totalExercises,
+      0,
+    )
+    const completedExercises = lessons.reduce(
+      (sum, lesson) => sum + lesson.completedExercises,
+      0,
+    )
+
+    return {
+      moduleId: module.id,
+      completedExercises,
+      totalExercises,
+      percentComplete: toPercent(completedExercises, totalExercises),
+      lessons,
+    }
+  })
+
+  const totalExercises = modules.reduce(
+    (sum, module) => sum + module.totalExercises,
+    0,
+  )
+  const completedExercises = modules.reduce(
+    (sum, module) => sum + module.completedExercises,
+    0,
+  )
+
+  return {
+    courseId: args.courseId,
+    courseVersionId: args.courseVersionId,
+    completedExercises,
+    totalExercises,
+    percentComplete: toPercent(completedExercises, totalExercises),
+    modules,
+  }
 }
 
 function createRepositoryFromState(state: MemoryState): CourseRepository {
@@ -565,6 +562,57 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
       return published ? mapPublisherRecord(course, published) : null
     },
 
+    async upsertLearnerExerciseAttempt({
+      userId,
+      courseId,
+      courseVersionId,
+      lessonId,
+      exerciseId,
+      answers,
+      isCorrect,
+    }) {
+      const key = `${userId}:${courseId}:${courseVersionId}:${lessonId}:${exerciseId}`
+      const previous = state.learnerAttemptsByKey.get(key)
+      const attempt: LearnerExerciseAttemptRecord = {
+        id: previous?.id ?? randomUUID(),
+        userId,
+        courseId,
+        courseVersionId,
+        lessonId,
+        exerciseId,
+        answers: clone(answers),
+        isCorrect,
+        attemptedAt: nowIso(),
+      }
+      state.learnerAttemptsByKey.set(key, attempt)
+      return clone(attempt)
+    },
+
+    async getLearnerCourseProgress({ userId, courseId }) {
+      const course = state.courses.get(courseId)
+      if (!course) {
+        return null
+      }
+      const published = publishedForCourse(courseId)
+      if (!published) {
+        return null
+      }
+
+      const attempts = Array.from(state.learnerAttemptsByKey.values()).filter(
+        (attempt) =>
+          attempt.userId === userId &&
+          attempt.courseId === courseId &&
+          attempt.courseVersionId === published.id,
+      )
+
+      return buildCourseProgressFromContent({
+        courseId,
+        courseVersionId: published.id,
+        content: published.content,
+        attempts,
+      })
+    },
+
     async listPublisherCourses({ userId, email }) {
       const { ownerId } = await provisionPersonalOwner({ userId, email })
       const rows: PublisherCourseRecord[] = []
@@ -814,14 +862,12 @@ export function createInMemoryCourseRepository(): CourseRepository {
 }
 
 export function createNodeCourseRepository(db: NodeDb): CourseRepository {
-  void db
-  return createRepositoryFromState(sharedMemoryState)
+  return createNodePostgresCourseRepository(db)
 }
 
 export function createWorkerSupabaseCourseRepository(config: {
   supabaseUrl: string
   serviceRoleKey: string
 }): CourseRepository {
-  void config
-  return createRepositoryFromState(sharedMemoryState)
+  return createWorkerSupabaseCourseRepositoryImpl(config)
 }

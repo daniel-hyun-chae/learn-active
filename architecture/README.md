@@ -4,6 +4,8 @@ This directory is the technical entry point for humans and AI agents who need to
 
 ## Start here
 
+- Codebase map (what lives where): `architecture/codebase-map.md`
+- Domain glossary (precise term definitions): `architecture/domain-glossary.md`
 - System architecture overview: `architecture/overview.md`
 - CI/CD, staging/production deploy and rollback runbook: `architecture/ci-cd.md`
 - Environment variable and secret scope: `architecture/environment-variables.md`
@@ -12,7 +14,6 @@ This directory is the technical entry point for humans and AI agents who need to
 ## Supporting references
 
 - Implementation decisions (why choices were made): `decision-log/`
-- Evaluation criteria and acceptance contracts: `evaluations/`
 - Human local quickstart (devcontainer-first): `README.md`
 
 ## Maintenance expectations

@@ -9,8 +9,9 @@ import {
 } from 'react-native'
 import { useTranslation } from 'react-i18next'
 import { tokens } from '@app/shared-tokens'
-import type { Exercise, Lesson } from './types'
+import type { Lesson } from './types'
 import { FillInBlankExercise } from './exercises/FillInBlankExercise'
+import { MultipleChoiceExercise } from './exercises/MultipleChoiceExercise'
 
 type LessonViewProps = {
   lesson: Lesson
@@ -116,7 +117,25 @@ export function LessonView({ lesson, onBack }: LessonViewProps) {
 
     return (
       <View style={styles.blockSection}>
-        <FillInBlankExercise exercise={selectedExercise as Exercise} />
+        {selectedExercise.type === 'MULTIPLE_CHOICE' ? (
+          <MultipleChoiceExercise
+            exercise={
+              selectedExercise as Extract<
+                Lesson['exercises'][number],
+                { type: 'MULTIPLE_CHOICE' }
+              >
+            }
+          />
+        ) : (
+          <FillInBlankExercise
+            exercise={
+              selectedExercise as Extract<
+                Lesson['exercises'][number],
+                { type: 'FILL_IN_THE_BLANK' }
+              >
+            }
+          />
+        )}
       </View>
     )
   }

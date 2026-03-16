@@ -82,6 +82,39 @@ export class ExerciseStepInput {
 }
 
 @InputType()
+export class FillInBlankExerciseContentInput {
+  @Field(() => [ExerciseStepInput])
+  steps!: ExerciseStepInput[]
+}
+
+@InputType()
+export class MultipleChoiceChoiceInput {
+  @Field(() => ID, { nullable: true })
+  id?: string
+
+  @Field(() => Int, { nullable: true })
+  order?: number
+
+  @Field(() => String)
+  text!: string
+
+  @Field(() => Boolean)
+  isCorrect!: boolean
+}
+
+@InputType()
+export class MultipleChoiceExerciseContentInput {
+  @Field(() => String)
+  question!: string
+
+  @Field(() => Boolean)
+  allowsMultiple!: boolean
+
+  @Field(() => [MultipleChoiceChoiceInput])
+  choices!: MultipleChoiceChoiceInput[]
+}
+
+@InputType()
 export class ExerciseInput {
   @Field(() => ID, { nullable: true })
   id?: string
@@ -95,8 +128,11 @@ export class ExerciseInput {
   @Field(() => String, { nullable: true })
   instructions?: string
 
-  @Field(() => [ExerciseStepInput])
-  steps!: ExerciseStepInput[]
+  @Field(() => FillInBlankExerciseContentInput, { nullable: true })
+  fillInBlank?: FillInBlankExerciseContentInput
+
+  @Field(() => MultipleChoiceExerciseContentInput, { nullable: true })
+  multipleChoice?: MultipleChoiceExerciseContentInput
 }
 
 @InputType()
@@ -169,4 +205,31 @@ export class CourseInput {
 
   @Field(() => [ModuleInput])
   modules!: ModuleInput[]
+}
+
+@InputType()
+export class AttemptAnswerInput {
+  @Field(() => String)
+  key!: string
+
+  @Field(() => String)
+  value!: string
+}
+
+@InputType()
+export class LearnerExerciseAttemptInput {
+  @Field(() => String)
+  courseId!: string
+
+  @Field(() => String)
+  courseVersionId!: string
+
+  @Field(() => String)
+  lessonId!: string
+
+  @Field(() => String)
+  exerciseId!: string
+
+  @Field(() => [AttemptAnswerInput])
+  answers!: AttemptAnswerInput[]
 }

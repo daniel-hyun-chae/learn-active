@@ -9,7 +9,7 @@ function read(file) {
   return fs.readFileSync(path.join(root, file), 'utf8')
 }
 
-test('publisher workflow wiring @eval(EVAL-PUBLISHERS-COURSE-001,EVAL-PUBLISHERS-COURSE-003,EVAL-PUBLISHERS-COURSE-004,EVAL-PUBLISHERS-COURSE-007)', () => {
+test('publisher workflow wiring', () => {
   const publishRoute = read('apps/web/src/routes/publish.tsx')
   const publishCourseRoute = read('apps/web/src/routes/publish.$courseId.tsx')
   const publisherHome = read(
@@ -63,12 +63,21 @@ test('publisher workflow wiring @eval(EVAL-PUBLISHERS-COURSE-001,EVAL-PUBLISHERS
   assert.ok(publisherHome.includes('publisher-exercise-move-down'))
   assert.ok(publisherHome.includes('moveLesson('))
   assert.ok(publisherHome.includes('moveExercise('))
+  assert.ok(publisherHome.includes('publisher-exercise-type'))
+  assert.ok(publisherHome.includes('publisher-multiple-choice-question'))
+  assert.ok(
+    publisherHome.includes('publisher-multiple-choice-add-choice') &&
+      publisherHome.includes('publisher-multiple-choice-choice-text'),
+  )
 
   assert.ok(publisherUtils.includes('[blank]'))
   assert.ok(publisherUtils.includes('contentPages'))
   assert.ok(publisherUtils.includes('priceCents'))
   assert.ok(publisherUtils.includes('currency'))
   assert.ok(!publisherUtils.includes('language'))
+  assert.ok(publisherUtils.includes('reindexMultipleChoiceChoices'))
+  assert.ok(publisherUtils.includes('fillInBlank'))
+  assert.ok(publisherUtils.includes('multipleChoice'))
 
   assert.ok(publisherHome.includes('seedSampleCourse'))
   assert.ok(publisherHome.includes('upsertCourse'))

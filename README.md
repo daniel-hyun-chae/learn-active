@@ -29,6 +29,8 @@ pnpm dev
 
 `pnpm dev` is the canonical local startup. It waits for DB readiness, applies Supabase migrations fail-hard, starts API + web servers, and verifies health checks.
 
+The API worker runtime now requires `SUPABASE_SERVICE_ROLE_KEY` for its default course repository path. Local dev/smoke/e2e scripts auto-derive this from `supabase status -o env` when not explicitly set.
+
 `pnpm db:up` excludes Supabase edge runtime by default for better reliability in restricted/offline environments. Include it only when needed:
 
 ```

@@ -1,5 +1,4 @@
 import type { ApiRuntimeEnv } from './env.js'
-import { runtimeLogger } from './logger.js'
 import { generateId } from './crypto.js'
 import { createStripeService, type StripeService } from './stripe.js'
 import { createNodeDb } from '../db/connection.js'
@@ -28,33 +27,7 @@ function createRuntimeStripeService(env: ApiRuntimeEnv): StripeService | null {
   })
 }
 
-function createCourseRepository(env: ApiRuntimeEnv): Promise<CourseRepository>
-function createCourseRepository(
-  env: ApiRuntimeEnv,
-  nodeDb: NonNullable<Awaited<ReturnType<typeof createNodeDb>>>,
-): Promise<CourseRepository>
-async function createCourseRepository(
-  env: ApiRuntimeEnv,
-  nodeDb?: NonNullable<Awaited<ReturnType<typeof createNodeDb>>>,
-): Promise<CourseRepository> {
-  if (env.target === 'node' && nodeDb) {
-    return createNodeCourseRepository(nodeDb)
-  }
-
-  if (
-    env.target === 'worker' &&
-    env.supabaseUrl &&
-    env.supabaseServiceRoleKey
-  ) {
-    return createWorkerSupabaseCourseRepository({
-      supabaseUrl: env.supabaseUrl,
-      serviceRoleKey: env.supabaseServiceRoleKey,
-    })
-  }
-
-  runtimeLogger.warn(
-    '[api] No runtime DB adapter available, using in-memory course repository',
-  )
+function createCourseRepositoryForTests(): CourseRepository {
   return createInMemoryCourseRepository()
 }
 
@@ -63,9 +36,13 @@ export async function createRuntimeServices(
 ): Promise<RuntimeServices> {
   if (env.target === 'node') {
     const db = await createNodeDb(env.databaseUrl)
-    const courseRepository = db
-      ? await createCourseRepository(env, db)
-      : await createCourseRepository(env)
+    if (!db) {
+      throw new Error(
+        '[api] DATABASE_URL is required and must be reachable for node runtime course repository.',
+      )
+    }
+
+    const courseRepository = createNodeCourseRepository(db)
 
     return {
       env,
@@ -75,10 +52,21 @@ export async function createRuntimeServices(
     }
   }
 
+  if (!env.supabaseUrl || !env.supabaseServiceRoleKey) {
+    throw new Error(
+      '[api] SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required for worker runtime course repository.',
+    )
+  }
+
   return {
     env,
-    courseRepository: await createCourseRepository(env),
+    courseRepository: createWorkerSupabaseCourseRepository({
+      supabaseUrl: env.supabaseUrl,
+      serviceRoleKey: env.supabaseServiceRoleKey,
+    }),
     stripe: createRuntimeStripeService(env),
     generateId,
   }
 }
+
+export { createCourseRepositoryForTests }

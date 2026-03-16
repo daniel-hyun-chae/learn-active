@@ -9,7 +9,7 @@ function read(file) {
   return fs.readFileSync(path.join(root, file), 'utf8')
 }
 
-test('course list wiring @eval(EVAL-LEARNERS-COURSE-001)', () => {
+test('course list wiring', () => {
   const learnerHome = read(
     'apps/web/src/features/learners/home/LearnerHome.tsx',
   )
@@ -25,7 +25,7 @@ test('course list wiring @eval(EVAL-LEARNERS-COURSE-001)', () => {
   assert.ok(mobileHome.includes('learners.courses.start'))
 })
 
-test('lesson block navigation wiring @eval(EVAL-LEARNERS-COURSE-002,EVAL-LEARNERS-COURSE-005)', () => {
+test('lesson block navigation wiring', () => {
   const lessonView = read(
     'apps/web/src/features/learners/course/LessonView.tsx',
   )
@@ -66,7 +66,7 @@ test('lesson block navigation wiring @eval(EVAL-LEARNERS-COURSE-002,EVAL-LEARNER
   assert.ok(!mobileLessonView.includes('learners.lesson.startExercise'))
 })
 
-test('fill in blank exercise wiring @eval(EVAL-LEARNERS-COURSE-003)', () => {
+test('fill in blank exercise wiring', () => {
   const exercise = read(
     'apps/web/src/features/learners/course/exercises/FillInBlankExercise.tsx',
   )
@@ -79,15 +79,109 @@ test('fill in blank exercise wiring @eval(EVAL-LEARNERS-COURSE-003)', () => {
   assert.ok(mobileExercise.includes('learners.exercise.optionsLabel'))
   assert.ok(seed.includes('blank-german-3'))
   assert.ok(seed.includes('blank-german-4'))
+  assert.ok(seed.includes('fillInBlank'))
 })
 
-test('dark mode infra @eval(EVAL-LEARNERS-COURSE-004)', () => {
+test('multiple choice exercise wiring', () => {
+  const webLessonView = read(
+    'apps/web/src/features/learners/course/LessonView.tsx',
+  )
+  const webMultipleChoice = read(
+    'apps/web/src/features/learners/course/exercises/MultipleChoiceExercise.tsx',
+  )
+  const mobileLessonView = read(
+    'apps/learners-mobile/src/features/learners/course/LessonView.tsx',
+  )
+  const mobileMultipleChoice = read(
+    'apps/learners-mobile/src/features/learners/course/exercises/MultipleChoiceExercise.tsx',
+  )
+  const seed = read('apps/api/src/features/course/seed.ts')
+  const publisherHome = read(
+    'apps/web/src/features/publishers/PublisherHome.tsx',
+  )
+
+  assert.ok(
+    webLessonView.includes("selectedExercise.type === 'MULTIPLE_CHOICE'"),
+  )
+  assert.ok(webMultipleChoice.includes('multiple-choice-exercise'))
+  assert.ok(webMultipleChoice.includes('multiple-choice-option'))
+  assert.ok(webMultipleChoice.includes('multiple-choice-feedback'))
+
+  assert.ok(
+    mobileLessonView.includes("selectedExercise.type === 'MULTIPLE_CHOICE'"),
+  )
+  assert.ok(mobileMultipleChoice.includes('multipleChoice.allowsMultiple'))
+  assert.ok(
+    mobileMultipleChoice.includes('learners.exercise.multipleChoice.submit'),
+  )
+
+  assert.ok(seed.includes('ExerciseType.MULTIPLE_CHOICE'))
+  assert.ok(seed.includes('multipleChoice:'))
+  assert.ok(seed.includes('choice-german-1'))
+
+  assert.ok(publisherHome.includes('publisher-exercise-type'))
+  assert.ok(publisherHome.includes('publisher-multiple-choice-allows-multiple'))
+  assert.ok(publisherHome.includes('publisher-multiple-choice-choice-move-up'))
+})
+
+test('dark mode infra', () => {
   const webRoot = read('apps/web/src/routes/__root.tsx')
   assert.ok(webRoot.includes('data-theme'))
   assert.ok(webRoot.includes('color-scheme'))
 })
 
-test('paid checkout web wiring @eval(EVAL-LEARNERS-COURSE-008,EVAL-LEARNERS-COURSE-010)', () => {
+test('learner attempt and progress persistence wiring', () => {
+  const lessonRoute = read(
+    'apps/web/src/routes/courses.$courseId.lessons.$lessonId.tsx',
+  )
+  const learnerHome = read(
+    'apps/web/src/features/learners/home/LearnerHome.tsx',
+  )
+  const learnRoute = read('apps/web/src/routes/learn.tsx')
+  const fillInBlankExercise = read(
+    'apps/web/src/features/learners/course/exercises/FillInBlankExercise.tsx',
+  )
+  const multipleChoiceExercise = read(
+    'apps/web/src/features/learners/course/exercises/MultipleChoiceExercise.tsx',
+  )
+  const courseResolver = read('apps/api/src/features/course/resolver.ts')
+  const courseRepositoryContract = read(
+    'apps/api/src/features/course/repository-contract.ts',
+  )
+  const migration = read(
+    'supabase/migrations/0006_learner_attempt_progress.sql',
+  )
+
+  assert.ok(lessonRoute.includes('learnerCourseProgress(courseId: $id)'))
+  assert.ok(lessonRoute.includes('upsertLearnerExerciseAttempt'))
+  assert.ok(lessonRoute.includes('learners.progress.lessonSummary'))
+  assert.ok(lessonRoute.includes('learners.progress.modulePercent'))
+  assert.ok(lessonRoute.includes('learners.progress.exerciseStatusAttempted'))
+
+  assert.ok(fillInBlankExercise.includes('onSubmitAttempt'))
+  assert.ok(multipleChoiceExercise.includes('onSubmitAttempt'))
+
+  assert.ok(learnRoute.includes('learnerCourseProgress(courseId: $courseId)'))
+  assert.ok(learnerHome.includes('course-card-progress'))
+
+  assert.ok(courseResolver.includes('learnerCourseProgress'))
+  assert.ok(courseResolver.includes('upsertLearnerExerciseAttempt'))
+  assert.ok(courseRepositoryContract.includes('upsertLearnerExerciseAttempt'))
+  assert.ok(courseRepositoryContract.includes('getLearnerCourseProgress'))
+
+  assert.ok(
+    migration.includes(
+      'create table if not exists public.learner_exercise_attempts',
+    ),
+  )
+  assert.ok(
+    migration.includes(
+      'unique(user_id, course_id, course_version_id, lesson_id, exercise_id)',
+    ),
+  )
+})
+
+test('paid checkout web wiring', () => {
   const catalogRoute = read('apps/web/src/routes/courses.tsx')
   const detailRoute = read('apps/web/src/routes/courses.$slug.tsx')
   const purchaseSuccessRoute = read('apps/web/src/routes/purchase.success.tsx')
@@ -110,7 +204,7 @@ test('paid checkout web wiring @eval(EVAL-LEARNERS-COURSE-008,EVAL-LEARNERS-COUR
   assert.ok(purchaseSuccessRoute.includes("to: '/my-courses'"))
 })
 
-test('mobile purchase and deep-link wiring @eval(EVAL-LEARNERS-COURSE-008,EVAL-LEARNERS-COURSE-009,EVAL-LEARNERS-COURSE-010)', () => {
+test('mobile purchase and deep-link wiring', () => {
   const mobileApp = read(
     'apps/learners-mobile/src/features/learners/LearnerMobileApp.tsx',
   )

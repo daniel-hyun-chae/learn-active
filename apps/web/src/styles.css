@@ -424,6 +424,10 @@ a {
   color: #ff9b9b;
 }
 
+.status-success {
+  color: var(--color-accent);
+}
+
 .editor-shell {
   border: var(--border-width-sm) solid var(--color-border);
   border-radius: var(--radius-md);
@@ -739,6 +743,11 @@ a {
   background: var(--color-background);
   color: var(--color-text);
   cursor: pointer;
+}
+
+.exercise-option.active {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent);
 }
 
 .exercise-actions {

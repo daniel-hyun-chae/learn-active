@@ -27,6 +27,7 @@ import {
   reindexContentPages,
   reindexLessons,
   reindexModules,
+  reindexMultipleChoiceChoices,
   segmentsToBlankTemplate,
   syncBlanks,
   toCourseInput,
@@ -34,6 +35,7 @@ import {
 import type { Exercise, Lesson } from '../learners/course/types'
 import { LessonView } from '../learners/course/LessonView'
 import { FillInBlankExercise } from '../learners/course/exercises/FillInBlankExercise'
+import { MultipleChoiceExercise } from '../learners/course/exercises/MultipleChoiceExercise'
 
 type PublisherHomeProps = {
   course: CourseDraft
@@ -77,14 +79,26 @@ const COURSE_DRAFT_SELECTION = `
         type
         title
         instructions
-        steps {
-          id
-          order
-          prompt
-          threadId
-          threadTitle
-          segments { type text blankId }
-          blanks { id correct variant options }
+        fillInBlank {
+          steps {
+            id
+            order
+            prompt
+            threadId
+            threadTitle
+            segments { type text blankId }
+            blanks { id correct variant options }
+          }
+        }
+        multipleChoice {
+          question
+          allowsMultiple
+          choices {
+            id
+            order
+            text
+            isCorrect
+          }
         }
       }
     }
@@ -111,34 +125,149 @@ type Selection =
 type PanelKey = 'structure' | 'designer' | 'preview'
 
 function toLearnerExercise(exercise: ExerciseDraft): Exercise {
+  if (exercise.type === 'MULTIPLE_CHOICE') {
+    return {
+      id: exercise.id ?? createId('exercise'),
+      type: 'MULTIPLE_CHOICE',
+      title: exercise.title,
+      instructions: exercise.instructions,
+      multipleChoice: {
+        question: exercise.multipleChoice?.question ?? '',
+        allowsMultiple: Boolean(exercise.multipleChoice?.allowsMultiple),
+        choices: [...(exercise.multipleChoice?.choices ?? [])]
+          .sort((a, b) => a.order - b.order)
+          .map((choice, index) => ({
+            id: choice.id ?? createId('choice'),
+            order: choice.order ?? index + 1,
+            text: choice.text,
+            isCorrect: Boolean(choice.isCorrect),
+          })),
+      },
+    }
+  }
+
+  const fillSteps = exercise.fillInBlank?.steps ?? []
   return {
     id: exercise.id ?? createId('exercise'),
     type: 'FILL_IN_THE_BLANK',
     title: exercise.title,
-    steps: exercise.steps.map((step) => {
-      const templateValue =
-        typeof step.template === 'string' ? step.template : undefined
-      const safeTemplate =
-        templateValue ?? segmentsToBlankTemplate(step.segments) ?? ''
-      const blanks = syncBlanks(safeTemplate, step.blanks)
-      return {
-        id: step.id ?? createId('step'),
-        order: step.order,
-        prompt: step.prompt,
-        threadId: step.threadId,
-        threadTitle: step.threadTitle,
-        segments: blankTemplateToSegments(safeTemplate, blanks),
-        blanks: blanks.map((blank) => ({
-          id: blank.id ?? createId('blank'),
-          correct: blank.correct,
-          variant: blank.variant,
-          options:
-            blank.variant === 'OPTIONS'
-              ? parseBlankOptions(blank.options)
-              : undefined,
-        })),
-      }
-    }),
+    fillInBlank: {
+      steps: fillSteps.map((step) => {
+        const templateValue =
+          typeof step.template === 'string' ? step.template : undefined
+        const safeTemplate =
+          templateValue ?? segmentsToBlankTemplate(step.segments) ?? ''
+        const blanks = syncBlanks(safeTemplate, step.blanks)
+        return {
+          id: step.id ?? createId('step'),
+          order: step.order,
+          prompt: step.prompt,
+          threadId: step.threadId,
+          threadTitle: step.threadTitle,
+          segments: blankTemplateToSegments(safeTemplate, blanks),
+          blanks: blanks.map((blank) => ({
+            id: blank.id ?? createId('blank'),
+            correct: blank.correct,
+            variant: blank.variant,
+            options:
+              blank.variant === 'OPTIONS'
+                ? parseBlankOptions(blank.options)
+                : undefined,
+          })),
+        }
+      }),
+    },
+  }
+}
+
+function getFillSteps(exercise: ExerciseDraft): ExerciseStepDraft[] {
+  return exercise.fillInBlank?.steps ?? []
+}
+
+function getMultipleChoiceChoices(exercise: ExerciseDraft) {
+  return exercise.multipleChoice?.choices ?? []
+}
+
+function withUpdatedMultipleChoice(
+  exercise: ExerciseDraft,
+  updater: (
+    multipleChoice: NonNullable<ExerciseDraft['multipleChoice']>,
+  ) => NonNullable<ExerciseDraft['multipleChoice']>,
+): ExerciseDraft {
+  const base = exercise.multipleChoice ?? {
+    question: '',
+    allowsMultiple: false,
+    choices: [],
+  }
+  return {
+    ...exercise,
+    multipleChoice: updater(base),
+  }
+}
+
+function withUpdatedFillInBlank(
+  exercise: ExerciseDraft,
+  updater: (steps: ExerciseStepDraft[]) => ExerciseStepDraft[],
+): ExerciseDraft {
+  return {
+    ...exercise,
+    fillInBlank: {
+      steps: updater(getFillSteps(exercise)),
+    },
+  }
+}
+
+function withUpdatedExerciseType(
+  exercise: ExerciseDraft,
+  type: ExerciseDraft['type'],
+  defaults: {
+    multipleChoiceQuestion: string
+    multipleChoiceChoicePlaceholder: string
+    fillPrompt: string
+    fillThreadTitle: string
+  },
+): ExerciseDraft {
+  if (type === 'MULTIPLE_CHOICE') {
+    return {
+      ...exercise,
+      type,
+      multipleChoice: exercise.multipleChoice ?? {
+        question: defaults.multipleChoiceQuestion,
+        allowsMultiple: false,
+        choices: [
+          {
+            id: createId('choice'),
+            order: 1,
+            text: defaults.multipleChoiceChoicePlaceholder,
+            isCorrect: true,
+          },
+          {
+            id: createId('choice'),
+            order: 2,
+            text: defaults.multipleChoiceChoicePlaceholder,
+            isCorrect: false,
+          },
+        ],
+      },
+    }
+  }
+
+  return {
+    ...exercise,
+    type,
+    fillInBlank: exercise.fillInBlank ?? {
+      steps: [
+        {
+          id: createId('step'),
+          order: 1,
+          prompt: defaults.fillPrompt,
+          threadId: 'thread-1',
+          threadTitle: defaults.fillThreadTitle,
+          template: BLANK_TOKEN,
+          blanks: syncBlanks(BLANK_TOKEN, []),
+        },
+      ],
+    },
   }
 }
 
@@ -647,17 +776,37 @@ export function PublisherHome({ course }: PublisherHomeProps) {
           type: 'FILL_IN_THE_BLANK',
           title: t('publishers.exercise.newTitle'),
           instructions: '',
-          steps: [
-            {
-              id: createId('step'),
-              order: 1,
-              prompt: t('publishers.exercise.promptPlaceholder'),
-              threadId: 'thread-1',
-              threadTitle: t('publishers.exercise.threadTitle'),
-              template: BLANK_TOKEN,
-              blanks: syncBlanks(BLANK_TOKEN, []),
-            },
-          ],
+          fillInBlank: {
+            steps: [
+              {
+                id: createId('step'),
+                order: 1,
+                prompt: t('publishers.exercise.promptPlaceholder'),
+                threadId: 'thread-1',
+                threadTitle: t('publishers.exercise.threadTitle'),
+                template: BLANK_TOKEN,
+                blanks: syncBlanks(BLANK_TOKEN, []),
+              },
+            ],
+          },
+          multipleChoice: {
+            question: t('publishers.exercise.multipleChoice.defaultQuestion'),
+            allowsMultiple: false,
+            choices: [
+              {
+                id: createId('choice'),
+                order: 1,
+                text: t('publishers.exercise.multipleChoice.choicePlaceholder'),
+                isCorrect: true,
+              },
+              {
+                id: createId('choice'),
+                order: 2,
+                text: t('publishers.exercise.multipleChoice.choicePlaceholder'),
+                isCorrect: false,
+              },
+            ],
+          },
         },
       ],
     }))
@@ -1396,6 +1545,10 @@ export function PublisherHome({ course }: PublisherHomeProps) {
     }
 
     if (selection.type === 'exercise' && selectedExercise && selectedLesson) {
+      const selectedExerciseType = selectedExercise.type
+      const fillSteps = getFillSteps(selectedExercise)
+      const multipleChoices = getMultipleChoiceChoices(selectedExercise)
+
       return (
         <div className="publisher-stack">
           <div className="publisher-grid">
@@ -1419,6 +1572,45 @@ export function PublisherHome({ course }: PublisherHomeProps) {
               />
             </label>
             <label className="publisher-field publisher-full">
+              {t('publishers.exercise.type')}
+              <select
+                data-test="publisher-exercise-type"
+                value={selectedExerciseType}
+                onChange={(event) =>
+                  updateExerciseById(
+                    selection.moduleId,
+                    selection.lessonId,
+                    selection.exerciseId,
+                    (exercise) =>
+                      withUpdatedExerciseType(
+                        exercise,
+                        event.target.value as ExerciseDraft['type'],
+                        {
+                          multipleChoiceQuestion: t(
+                            'publishers.exercise.multipleChoice.defaultQuestion',
+                          ),
+                          multipleChoiceChoicePlaceholder: t(
+                            'publishers.exercise.multipleChoice.choicePlaceholder',
+                          ),
+                          fillPrompt: t(
+                            'publishers.exercise.promptPlaceholder',
+                          ),
+                          fillThreadTitle: t('publishers.exercise.threadTitle'),
+                        },
+                      ),
+                  )
+                }
+              >
+                <option value="FILL_IN_THE_BLANK">
+                  {t('publishers.exercise.typeFillInBlank')}
+                </option>
+                <option value="MULTIPLE_CHOICE">
+                  {t('publishers.exercise.typeMultipleChoice')}
+                </option>
+              </select>
+            </label>
+
+            <label className="publisher-field publisher-full">
               {t('publishers.exercise.instructions')}
               <textarea
                 data-test="publisher-exercise-instructions"
@@ -1436,6 +1628,32 @@ export function PublisherHome({ course }: PublisherHomeProps) {
                 }
               />
             </label>
+
+            {selectedExerciseType === 'MULTIPLE_CHOICE' ? (
+              <label className="publisher-field publisher-full">
+                {t('publishers.exercise.multipleChoice.question')}
+                <input
+                  type="text"
+                  data-test="publisher-multiple-choice-question"
+                  value={selectedExercise.multipleChoice?.question ?? ''}
+                  onChange={(event) =>
+                    updateExerciseById(
+                      selection.moduleId,
+                      selection.lessonId,
+                      selection.exerciseId,
+                      (exercise) =>
+                        withUpdatedMultipleChoice(
+                          exercise,
+                          (multipleChoice) => ({
+                            ...multipleChoice,
+                            question: event.target.value,
+                          }),
+                        ),
+                    )
+                  }
+                />
+              </label>
+            ) : null}
             <div className="publisher-inline-actions publisher-full">
               <button
                 type="button"
@@ -1454,210 +1672,486 @@ export function PublisherHome({ course }: PublisherHomeProps) {
             </div>
           </div>
 
-          {selectedExercise.steps.map(
-            (step: ExerciseStepDraft, stepIndex: number) => (
-              <div key={step.id} className="publisher-step">
-                <label className="publisher-field">
-                  {t('publishers.exercise.prompt')}
-                  <input
-                    type="text"
-                    data-test="publisher-step-prompt"
-                    value={step.prompt}
-                    onChange={(event) =>
-                      updateExerciseById(
-                        selection.moduleId,
-                        selection.lessonId,
-                        selection.exerciseId,
-                        (exercise) => {
-                          const steps = [...exercise.steps]
-                          steps[stepIndex] = {
-                            ...steps[stepIndex],
-                            prompt: event.target.value,
-                          }
-                          return { ...exercise, steps }
-                        },
-                      )
-                    }
-                  />
-                </label>
-                <div className="publisher-grid">
+          {selectedExerciseType === 'FILL_IN_THE_BLANK'
+            ? fillSteps.map((step: ExerciseStepDraft, stepIndex: number) => (
+                <div key={step.id} className="publisher-step">
                   <label className="publisher-field">
-                    {t('publishers.exercise.threadId')}
+                    {t('publishers.exercise.prompt')}
                     <input
                       type="text"
-                      data-test="publisher-step-thread-id"
-                      value={step.threadId}
+                      data-test="publisher-step-prompt"
+                      value={step.prompt}
                       onChange={(event) =>
                         updateExerciseById(
                           selection.moduleId,
                           selection.lessonId,
                           selection.exerciseId,
-                          (exercise) => {
-                            const steps = [...exercise.steps]
-                            steps[stepIndex] = {
-                              ...steps[stepIndex],
-                              threadId: event.target.value,
-                            }
-                            return { ...exercise, steps }
-                          },
+                          (exercise) =>
+                            withUpdatedFillInBlank(exercise, (steps) => {
+                              const next = [...steps]
+                              next[stepIndex] = {
+                                ...next[stepIndex],
+                                prompt: event.target.value,
+                              }
+                              return next
+                            }),
                         )
                       }
                     />
                   </label>
+                  <div className="publisher-grid">
+                    <label className="publisher-field">
+                      {t('publishers.exercise.threadId')}
+                      <input
+                        type="text"
+                        data-test="publisher-step-thread-id"
+                        value={step.threadId}
+                        onChange={(event) =>
+                          updateExerciseById(
+                            selection.moduleId,
+                            selection.lessonId,
+                            selection.exerciseId,
+                            (exercise) =>
+                              withUpdatedFillInBlank(exercise, (steps) => {
+                                const next = [...steps]
+                                next[stepIndex] = {
+                                  ...next[stepIndex],
+                                  threadId: event.target.value,
+                                }
+                                return next
+                              }),
+                          )
+                        }
+                      />
+                    </label>
+                    <label className="publisher-field">
+                      {t('publishers.exercise.threadTitle')}
+                      <input
+                        type="text"
+                        data-test="publisher-step-thread-title"
+                        value={step.threadTitle ?? ''}
+                        onChange={(event) =>
+                          updateExerciseById(
+                            selection.moduleId,
+                            selection.lessonId,
+                            selection.exerciseId,
+                            (exercise) =>
+                              withUpdatedFillInBlank(exercise, (steps) => {
+                                const next = [...steps]
+                                next[stepIndex] = {
+                                  ...next[stepIndex],
+                                  threadTitle: event.target.value,
+                                }
+                                return next
+                              }),
+                          )
+                        }
+                      />
+                    </label>
+                  </div>
                   <label className="publisher-field">
-                    {t('publishers.exercise.threadTitle')}
-                    <input
-                      type="text"
-                      data-test="publisher-step-thread-title"
-                      value={step.threadTitle ?? ''}
+                    {t('publishers.exercise.template')}
+                    <textarea
+                      data-test="publisher-step-template"
+                      value={step.template ?? ''}
                       onChange={(event) =>
                         updateExerciseById(
                           selection.moduleId,
                           selection.lessonId,
                           selection.exerciseId,
-                          (exercise) => {
-                            const steps = [...exercise.steps]
-                            steps[stepIndex] = {
-                              ...steps[stepIndex],
-                              threadTitle: event.target.value,
-                            }
-                            return { ...exercise, steps }
-                          },
+                          (exercise) =>
+                            withUpdatedFillInBlank(exercise, (steps) => {
+                              const next = [...steps]
+                              next[stepIndex] = {
+                                ...next[stepIndex],
+                                template: event.target.value,
+                                blanks: syncBlanks(
+                                  event.target.value,
+                                  next[stepIndex].blanks,
+                                ),
+                              }
+                              return next
+                            }),
                         )
                       }
                     />
                   </label>
-                </div>
-                <label className="publisher-field">
-                  {t('publishers.exercise.template')}
-                  <textarea
-                    data-test="publisher-step-template"
-                    value={step.template ?? ''}
-                    onChange={(event) =>
-                      updateExerciseById(
-                        selection.moduleId,
-                        selection.lessonId,
-                        selection.exerciseId,
-                        (exercise) => {
-                          const steps = [...exercise.steps]
-                          steps[stepIndex] = {
-                            ...steps[stepIndex],
-                            template: event.target.value,
-                            blanks: syncBlanks(
-                              event.target.value,
-                              steps[stepIndex].blanks,
-                            ),
-                          }
-                          return { ...exercise, steps }
-                        },
-                      )
-                    }
-                  />
-                </label>
-                {step.blanks.map(
-                  (blank: ExerciseBlankDraft, blankIndex: number) => (
-                    <div key={blank.id} className="publisher-blank">
-                      <div className="publisher-grid">
-                        <label className="publisher-field">
-                          {t('publishers.exercise.blankVariant')}
-                          <select
-                            data-test="publisher-blank-variant"
-                            value={blank.variant}
-                            onChange={(event) =>
-                              updateExerciseById(
-                                selection.moduleId,
-                                selection.lessonId,
-                                selection.exerciseId,
-                                (exercise) => {
-                                  const steps = [...exercise.steps]
-                                  const blanks = [...steps[stepIndex].blanks]
-                                  blanks[blankIndex] = {
-                                    ...blanks[blankIndex],
-                                    variant: event.target
-                                      .value as ExerciseBlankDraft['variant'],
-                                  }
-                                  steps[stepIndex] = {
-                                    ...steps[stepIndex],
-                                    blanks,
-                                  }
-                                  return { ...exercise, steps }
-                                },
-                              )
-                            }
-                          >
-                            <option value="OPTIONS">
-                              {t('publishers.exercise.variantOptions')}
-                            </option>
-                            <option value="TYPING">
-                              {t('publishers.exercise.variantTyping')}
-                            </option>
-                          </select>
-                        </label>
-                        <label className="publisher-field">
-                          {t('publishers.exercise.correct')}
-                          <input
-                            type="text"
-                            data-test="publisher-blank-correct"
-                            value={blank.correct}
-                            onChange={(event) =>
-                              updateExerciseById(
-                                selection.moduleId,
-                                selection.lessonId,
-                                selection.exerciseId,
-                                (exercise) => {
-                                  const steps = [...exercise.steps]
-                                  const blanks = [...steps[stepIndex].blanks]
-                                  blanks[blankIndex] = {
-                                    ...blanks[blankIndex],
-                                    correct: event.target.value,
-                                  }
-                                  steps[stepIndex] = {
-                                    ...steps[stepIndex],
-                                    blanks,
-                                  }
-                                  return { ...exercise, steps }
-                                },
-                              )
-                            }
-                          />
-                        </label>
-                        {blank.variant === 'OPTIONS' ? (
-                          <label className="publisher-field publisher-full">
-                            {t('publishers.exercise.options')}
-                            <input
-                              type="text"
-                              data-test="publisher-blank-options"
-                              value={normalizeBlankOptions(blank.options)}
+                  {step.blanks.map(
+                    (blank: ExerciseBlankDraft, blankIndex: number) => (
+                      <div key={blank.id} className="publisher-blank">
+                        <div className="publisher-grid">
+                          <label className="publisher-field">
+                            {t('publishers.exercise.blankVariant')}
+                            <select
+                              data-test="publisher-blank-variant"
+                              value={blank.variant}
                               onChange={(event) =>
                                 updateExerciseById(
                                   selection.moduleId,
                                   selection.lessonId,
                                   selection.exerciseId,
-                                  (exercise) => {
-                                    const steps = [...exercise.steps]
-                                    const blanks = [...steps[stepIndex].blanks]
-                                    blanks[blankIndex] = {
-                                      ...blanks[blankIndex],
-                                      options: event.target.value,
-                                    }
-                                    steps[stepIndex] = {
-                                      ...steps[stepIndex],
-                                      blanks,
-                                    }
-                                    return { ...exercise, steps }
-                                  },
+                                  (exercise) =>
+                                    withUpdatedFillInBlank(
+                                      exercise,
+                                      (steps) => {
+                                        const next = [...steps]
+                                        const blanks = [
+                                          ...next[stepIndex].blanks,
+                                        ]
+                                        blanks[blankIndex] = {
+                                          ...blanks[blankIndex],
+                                          variant: event.target
+                                            .value as ExerciseBlankDraft['variant'],
+                                        }
+                                        next[stepIndex] = {
+                                          ...next[stepIndex],
+                                          blanks,
+                                        }
+                                        return next
+                                      },
+                                    ),
+                                )
+                              }
+                            >
+                              <option value="OPTIONS">
+                                {t('publishers.exercise.variantOptions')}
+                              </option>
+                              <option value="TYPING">
+                                {t('publishers.exercise.variantTyping')}
+                              </option>
+                            </select>
+                          </label>
+                          <label className="publisher-field">
+                            {t('publishers.exercise.correct')}
+                            <input
+                              type="text"
+                              data-test="publisher-blank-correct"
+                              value={blank.correct}
+                              onChange={(event) =>
+                                updateExerciseById(
+                                  selection.moduleId,
+                                  selection.lessonId,
+                                  selection.exerciseId,
+                                  (exercise) =>
+                                    withUpdatedFillInBlank(
+                                      exercise,
+                                      (steps) => {
+                                        const next = [...steps]
+                                        const blanks = [
+                                          ...next[stepIndex].blanks,
+                                        ]
+                                        blanks[blankIndex] = {
+                                          ...blanks[blankIndex],
+                                          correct: event.target.value,
+                                        }
+                                        next[stepIndex] = {
+                                          ...next[stepIndex],
+                                          blanks,
+                                        }
+                                        return next
+                                      },
+                                    ),
                                 )
                               }
                             />
                           </label>
-                        ) : null}
+                          {blank.variant === 'OPTIONS' ? (
+                            <label className="publisher-field publisher-full">
+                              {t('publishers.exercise.options')}
+                              <input
+                                type="text"
+                                data-test="publisher-blank-options"
+                                value={normalizeBlankOptions(blank.options)}
+                                onChange={(event) =>
+                                  updateExerciseById(
+                                    selection.moduleId,
+                                    selection.lessonId,
+                                    selection.exerciseId,
+                                    (exercise) =>
+                                      withUpdatedFillInBlank(
+                                        exercise,
+                                        (steps) => {
+                                          const next = [...steps]
+                                          const blanks = [
+                                            ...next[stepIndex].blanks,
+                                          ]
+                                          blanks[blankIndex] = {
+                                            ...blanks[blankIndex],
+                                            options: event.target.value,
+                                          }
+                                          next[stepIndex] = {
+                                            ...next[stepIndex],
+                                            blanks,
+                                          }
+                                          return next
+                                        },
+                                      ),
+                                  )
+                                }
+                              />
+                            </label>
+                          ) : null}
+                        </div>
+                      </div>
+                    ),
+                  )}
+                </div>
+              ))
+            : null}
+
+          {selectedExerciseType === 'MULTIPLE_CHOICE' ? (
+            <div className="publisher-step">
+              <label className="publisher-field">
+                <input
+                  type="checkbox"
+                  data-test="publisher-multiple-choice-allows-multiple"
+                  checked={Boolean(
+                    selectedExercise.multipleChoice?.allowsMultiple,
+                  )}
+                  onChange={(event) =>
+                    updateExerciseById(
+                      selection.moduleId,
+                      selection.lessonId,
+                      selection.exerciseId,
+                      (exercise) =>
+                        withUpdatedMultipleChoice(
+                          exercise,
+                          (multipleChoice) => ({
+                            ...multipleChoice,
+                            allowsMultiple: event.target.checked,
+                          }),
+                        ),
+                    )
+                  }
+                />{' '}
+                {t('publishers.exercise.multipleChoice.allowMany')}
+              </label>
+
+              <p
+                className="muted"
+                data-test="publisher-multiple-choice-preview-question"
+              >
+                {selectedExercise.multipleChoice?.question ?? ''}
+              </p>
+
+              <div className="publisher-inline-actions">
+                <button
+                  type="button"
+                  className="ghost-button"
+                  data-test="publisher-multiple-choice-add-choice"
+                  onClick={() =>
+                    updateExerciseById(
+                      selection.moduleId,
+                      selection.lessonId,
+                      selection.exerciseId,
+                      (exercise) => {
+                        const choices = [...getMultipleChoiceChoices(exercise)]
+                        choices.push({
+                          id: createId('choice'),
+                          order: choices.length + 1,
+                          text: t(
+                            'publishers.exercise.multipleChoice.choicePlaceholder',
+                          ),
+                          isCorrect: false,
+                        })
+                        return withUpdatedMultipleChoice(
+                          exercise,
+                          (multipleChoice) => ({
+                            ...multipleChoice,
+                            choices: reindexMultipleChoiceChoices(choices),
+                          }),
+                        )
+                      },
+                    )
+                  }
+                >
+                  {t('publishers.exercise.multipleChoice.addChoice')}
+                </button>
+              </div>
+
+              {multipleChoices
+                .slice()
+                .sort((a, b) => a.order - b.order)
+                .map((choice, _choiceIndex, sortedChoices) => (
+                  <div key={choice.id} className="publisher-blank">
+                    <div className="publisher-grid">
+                      <label className="publisher-field publisher-full">
+                        {t('publishers.exercise.multipleChoice.choiceText')}
+                        <input
+                          type="text"
+                          data-test="publisher-multiple-choice-choice-text"
+                          value={choice.text}
+                          onChange={(event) =>
+                            updateExerciseById(
+                              selection.moduleId,
+                              selection.lessonId,
+                              selection.exerciseId,
+                              (exercise) => {
+                                return withUpdatedMultipleChoice(
+                                  exercise,
+                                  (multipleChoice) => ({
+                                    ...multipleChoice,
+                                    choices: getMultipleChoiceChoices(
+                                      exercise,
+                                    ).map((existing) =>
+                                      existing.id === choice.id
+                                        ? {
+                                            ...existing,
+                                            text: event.target.value,
+                                          }
+                                        : existing,
+                                    ),
+                                  }),
+                                )
+                              },
+                            )
+                          }
+                        />
+                      </label>
+
+                      <label className="publisher-field">
+                        <input
+                          type="checkbox"
+                          data-test="publisher-multiple-choice-choice-correct"
+                          checked={Boolean(choice.isCorrect)}
+                          onChange={(event) =>
+                            updateExerciseById(
+                              selection.moduleId,
+                              selection.lessonId,
+                              selection.exerciseId,
+                              (exercise) => {
+                                return withUpdatedMultipleChoice(
+                                  exercise,
+                                  (multipleChoice) => ({
+                                    ...multipleChoice,
+                                    choices: getMultipleChoiceChoices(
+                                      exercise,
+                                    ).map((existing) =>
+                                      existing.id === choice.id
+                                        ? {
+                                            ...existing,
+                                            isCorrect: event.target.checked,
+                                          }
+                                        : existing,
+                                    ),
+                                  }),
+                                )
+                              },
+                            )
+                          }
+                        />{' '}
+                        {t('publishers.exercise.multipleChoice.correctChoice')}
+                      </label>
+
+                      <div className="publisher-inline-actions publisher-full">
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          data-test="publisher-multiple-choice-choice-move-up"
+                          onClick={() =>
+                            updateExerciseById(
+                              selection.moduleId,
+                              selection.lessonId,
+                              selection.exerciseId,
+                              (exercise) => {
+                                const current = [
+                                  ...getMultipleChoiceChoices(exercise),
+                                ].sort((a, b) => a.order - b.order)
+                                const idx = current.findIndex(
+                                  (item) => item.id === choice.id,
+                                )
+                                if (idx <= 0) {
+                                  return exercise
+                                }
+                                const next = [...current]
+                                const [moved] = next.splice(idx, 1)
+                                next.splice(idx - 1, 0, moved)
+                                return withUpdatedMultipleChoice(
+                                  exercise,
+                                  (multipleChoice) => ({
+                                    ...multipleChoice,
+                                    choices: reindexMultipleChoiceChoices(next),
+                                  }),
+                                )
+                              },
+                            )
+                          }
+                        >
+                          {t('publishers.actions.moveUp')}
+                        </button>
+
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          data-test="publisher-multiple-choice-choice-move-down"
+                          onClick={() =>
+                            updateExerciseById(
+                              selection.moduleId,
+                              selection.lessonId,
+                              selection.exerciseId,
+                              (exercise) => {
+                                const current = [
+                                  ...getMultipleChoiceChoices(exercise),
+                                ].sort((a, b) => a.order - b.order)
+                                const idx = current.findIndex(
+                                  (item) => item.id === choice.id,
+                                )
+                                if (idx < 0 || idx >= current.length - 1) {
+                                  return exercise
+                                }
+                                const next = [...current]
+                                const [moved] = next.splice(idx, 1)
+                                next.splice(idx + 1, 0, moved)
+                                return withUpdatedMultipleChoice(
+                                  exercise,
+                                  (multipleChoice) => ({
+                                    ...multipleChoice,
+                                    choices: reindexMultipleChoiceChoices(next),
+                                  }),
+                                )
+                              },
+                            )
+                          }
+                        >
+                          {t('publishers.actions.moveDown')}
+                        </button>
+
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          data-test="publisher-multiple-choice-choice-delete"
+                          onClick={() =>
+                            updateExerciseById(
+                              selection.moduleId,
+                              selection.lessonId,
+                              selection.exerciseId,
+                              (exercise) => {
+                                const current = [
+                                  ...getMultipleChoiceChoices(exercise),
+                                ]
+                                  .sort((a, b) => a.order - b.order)
+                                  .filter((item) => item.id !== choice.id)
+                                return withUpdatedMultipleChoice(
+                                  exercise,
+                                  (multipleChoice) => ({
+                                    ...multipleChoice,
+                                    choices:
+                                      reindexMultipleChoiceChoices(current),
+                                  }),
+                                )
+                              },
+                            )
+                          }
+                          disabled={sortedChoices.length <= 1}
+                        >
+                          {t('publishers.actions.delete')}
+                        </button>
                       </div>
                     </div>
-                  ),
-                )}
-              </div>
-            ),
-          )}
+                  </div>
+                ))}
+            </div>
+          ) : null}
         </div>
       )
     }
@@ -1729,9 +2223,21 @@ export function PublisherHome({ course }: PublisherHomeProps) {
     }
 
     if (selection.type === 'exercise' && selectedExercise) {
+      const learnerExercise = toLearnerExercise(selectedExercise)
       return (
         <div className="publisher-preview" data-test="publisher-preview-root">
-          <FillInBlankExercise exercise={toLearnerExercise(selectedExercise)} />
+          {learnerExercise.type === 'MULTIPLE_CHOICE' ? (
+            <MultipleChoiceExercise exercise={learnerExercise} />
+          ) : (
+            <FillInBlankExercise
+              exercise={
+                learnerExercise as Extract<
+                  Exercise,
+                  { type: 'FILL_IN_THE_BLANK' }
+                >
+              }
+            />
+          )}
         </div>
       )
     }
