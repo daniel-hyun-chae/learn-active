@@ -273,3 +273,42 @@ export const learnerExerciseAttempts = pgTable(
     ),
   }),
 )
+
+export const learnerExerciseAttemptHistory = pgTable(
+  'learner_exercise_attempt_history',
+  {
+    id: uuid('id').primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => profiles.userId),
+    courseId: uuid('course_id')
+      .notNull()
+      .references(() => courses.id),
+    courseVersionId: uuid('course_version_id')
+      .notNull()
+      .references(() => courseVersions.id),
+    lessonId: text('lesson_id').notNull(),
+    exerciseId: text('exercise_id').notNull(),
+    answers: jsonb('answers').$type<Record<string, string>>().notNull(),
+    isCorrect: boolean('is_correct').notNull(),
+    attemptedAt: timestamp('attempted_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    userCourseIdx: index('learner_attempt_history_user_course_idx').on(
+      table.userId,
+      table.courseId,
+    ),
+    userVersionIdx: index('learner_attempt_history_user_version_idx').on(
+      table.userId,
+      table.courseVersionId,
+    ),
+    exerciseIdx: index('learner_attempt_history_exercise_idx').on(
+      table.userId,
+      table.courseId,
+      table.courseVersionId,
+      table.lessonId,
+      table.exerciseId,
+      table.attemptedAt,
+    ),
+  }),
+)

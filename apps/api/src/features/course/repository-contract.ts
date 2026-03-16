@@ -3,6 +3,7 @@ import type {
   CourseVersionDiffRecord,
   CourseVersionHistoryRecord,
   LearnerExerciseAttemptRecord,
+  LearnerExerciseAttemptHistoryRecord,
   EnrollmentRecord,
   PaymentRecord,
   PublicCourseRecord,
@@ -80,6 +81,13 @@ export type CourseRepository = {
     userId: string
     courseId: string
   }) => Promise<CourseProgressRecord | null>
+  listLearnerExerciseAttemptHistory: (args: {
+    userId: string
+    courseId: string
+    courseVersionId: string
+    lessonId: string
+    exerciseId: string
+  }) => Promise<LearnerExerciseAttemptHistoryRecord[]>
   listPublisherCourses: (args: {
     userId: string
     email: string | null

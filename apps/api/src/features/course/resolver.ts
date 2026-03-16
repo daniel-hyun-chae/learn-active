@@ -14,6 +14,7 @@ import {
   EnrollmentStatus,
   Exercise,
   LearnerExerciseAttempt,
+  LearnerExerciseAttemptHistoryEntry,
   MyCourse,
   Payment,
   PublicCourse,
@@ -174,6 +175,32 @@ export class CourseResolver {
       userId: user.id,
       courseId,
     })
+  }
+
+  @Query(() => [LearnerExerciseAttemptHistoryEntry])
+  async learnerExerciseAttemptHistory(
+    @Arg('courseId', () => String) courseId: string,
+    @Arg('courseVersionId', () => String) courseVersionId: string,
+    @Arg('lessonId', () => String) lessonId: string,
+    @Arg('exerciseId', () => String) exerciseId: string,
+    @Ctx() ctx: GraphQLContext,
+  ) {
+    const user = requireAuthenticatedUser(ctx)
+    const rows =
+      await ctx.services.courseRepository.listLearnerExerciseAttemptHistory({
+        userId: user.id,
+        courseId,
+        courseVersionId,
+        lessonId,
+        exerciseId,
+      })
+
+    return rows.map((row) => ({
+      ...row,
+      answers: Object.entries(row.answers).map(
+        ([key, value]): AttemptAnswer => ({ key, value }),
+      ),
+    }))
   }
 
   @Query(() => [PublicCourse])

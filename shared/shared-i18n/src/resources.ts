@@ -107,6 +107,22 @@ export const resources = {
       'learners.progress.modulePercent': 'Module {{percent}}% complete',
       'learners.progress.exerciseStatusAttempted': 'Attempted',
       'learners.progress.exerciseStatusCorrect': 'Correct',
+      'learners.review.enable': 'Enable review mode',
+      'learners.review.disable': 'Disable review mode',
+      'learners.review.pendingCount':
+        '{{count}} exercises pending mistake review',
+      'learners.review.historyButton': 'History',
+      'learners.review.historyOpenAria': 'Open attempt history for {{title}}',
+      'learners.review.historyTitle': 'Attempt history',
+      'learners.review.closeHistory': 'Close history',
+      'learners.review.historyForExercise': 'Exercise: {{title}}',
+      'learners.review.historyLoading': 'Loading attempt history...',
+      'learners.review.historyError': 'Unable to load attempt history.',
+      'learners.review.historyEmpty':
+        'No attempts yet for this exercise in this course.',
+      'learners.review.historyStatusCorrect': 'Correct',
+      'learners.review.historyStatusIncorrect': 'Incorrect',
+      'learners.review.historyNoAnswers': 'No answers captured.',
       'learners.exercise.contextTitle': 'Conversation context',
       'learners.exercise.contextEmpty':
         'This is the first sentence in the sequence.',

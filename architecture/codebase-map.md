@@ -78,9 +78,12 @@ Managed by Supabase with Drizzle ORM for application access.
 | `supabase/migrations/`      | SQL migration files (authoritative schema source)         |
 | `apps/api/src/db/schema.ts` | Drizzle ORM schema mirroring the migration-defined tables |
 
-Recent addition: `supabase/migrations/0006_learner_attempt_progress.sql` introduces learner exercise attempt persistence (`learner_exercise_attempts`).
+Recent additions:
 
-Tables: `profiles`, `owners`, `owner_members`, `courses`, `course_versions`, `course_publications`, `enrollments`, `payments`.
+- `supabase/migrations/0006_learner_attempt_progress.sql` introduces learner latest-attempt persistence (`learner_exercise_attempts`).
+- `supabase/migrations/0007_learner_attempt_history.sql` introduces append-only learner attempt timeline persistence (`learner_exercise_attempt_history`).
+
+Tables: `profiles`, `owners`, `owner_members`, `courses`, `course_versions`, `course_publications`, `enrollments`, `payments`, `learner_exercise_attempts`, `learner_exercise_attempt_history`.
 
 Content structure (modules, lessons, exercises) is stored as a JSONB blob in `course_versions.content`.
 
