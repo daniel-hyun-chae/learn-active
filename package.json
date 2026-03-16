@@ -15,7 +15,9 @@
     "db:up": "node scripts/dev-db.mjs up",
     "db:status": "node scripts/dev-db.mjs status",
     "db:logs": "node scripts/dev-db.mjs logs",
+    "hooks:install": "node scripts/install-git-hooks.mjs",
     "validate:deploy-env": "node scripts/validate-deploy-env.mjs",
+    "validate:lockfile": "node scripts/validate-pnpm-lockfile-major.mjs",
     "test:unit": "node --test tests/unit",
     "test:integration": "node --test tests/integration",
     "test:e2e": "node --test tests/e2e/smoke.test.js && node scripts/run-publisher-e2e.mjs"

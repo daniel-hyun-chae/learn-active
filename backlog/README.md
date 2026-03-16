@@ -27,7 +27,7 @@ Status drives folder location:
 
 - Items use `BG-NNN` IDs for stable reference.
 - Each item lives in its own file: `BG-NNN-short-slug.md`.
-- Next available ID: `BG-020`.
+- Next available ID: `BG-021`.
 - Priority tiers:
   - `P0` -- Foundation or blocker. Must be done before other work builds on it.
   - `P1` -- Next capability. Important for proving the core learning loop.
@@ -175,3 +175,4 @@ When implementation starts, the change-orchestrator appends these sections to th
 | BG-017 | AI-native repo support                          | Done   |
 | BG-018 | Human-readable backlog with acceptance criteria | Done   |
 | BG-019 | Spec-driven documentation and testing patterns  | Done   |
+| BG-020 | Pnpm lockfile major parity enforcement          | Done   |

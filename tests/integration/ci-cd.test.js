@@ -12,6 +12,8 @@ function read(file) {
 
 test('pull request validation workflow wiring', () => {
   const workflow = read('.github/workflows/ci-validation.yml')
+  const rootPackage = read('package.json')
+  const lockfileScript = read('scripts/validate-pnpm-lockfile-major.mjs')
 
   assert.ok(workflow.includes('name: CI Validation'))
   assert.ok(workflow.includes('pull_request:'))
@@ -22,10 +24,15 @@ test('pull request validation workflow wiring', () => {
   assert.ok(workflow.includes('pnpm test:e2e'))
   assert.ok(workflow.includes('pnpm --filter @app/learners-mobile lint'))
   assert.ok(workflow.includes('Validate lockfile and pnpm major alignment'))
+  assert.ok(workflow.includes('pnpm validate:lockfile'))
   assert.ok(workflow.includes('Validate committed env template file'))
   assert.ok(
     workflow.includes('pnpm exec playwright install --with-deps chromium'),
   )
+  assert.ok(rootPackage.includes('"validate:lockfile"'))
+  assert.ok(lockfileScript.includes('Expected pnpm major from packageManager'))
+  assert.ok(lockfileScript.includes('Detected lockfile major'))
+  assert.ok(lockfileScript.includes('pnpm major and lockfile major mismatch'))
 })
 
 test('staging deployment workflow wiring', () => {

@@ -16,6 +16,7 @@ backlog/        # work item tracking (proposed, done, archived)
 evaluations/    # backlog-to-evaluation traceability artifacts
 .opencode/      # AI agent governance (rules, skills, agents)
 .github/        # CI/CD workflows
+.githooks/      # optional repo-local git hooks
 ```
 
 ## Apps

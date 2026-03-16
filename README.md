@@ -58,12 +58,21 @@ pnpm dev:cleanup
 Guardrails:
 
 ```
+pnpm hooks:install
 pnpm verify:setup
 pnpm smoke:local
 pnpm test:unit
 pnpm test:integration
 pnpm test:e2e
 ```
+
+Optional: install repo-local git hooks once per clone to run lockfile parity checks before commit:
+
+```
+pnpm hooks:install
+```
+
+This configures `core.hooksPath` to `.githooks/` and runs `pnpm validate:lockfile` in pre-commit.
 
 ## Local URLs
 

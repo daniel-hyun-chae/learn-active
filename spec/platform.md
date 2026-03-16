@@ -226,6 +226,25 @@ Every pull request is validated with consistent monorepo checks before merge.
 - A GitHub Actions workflow is triggered by pull_request for all PRs.
 - Workflow installs dependencies and runs lint, build, unit, integration, and e2e checks.
 - React Native participates in CI checks only.
+- CI validates pnpm major and lockfile major parity using a shared repository script.
+
+### Pnpm lockfile parity
+
+The repository enforces lockfile major parity with the repository-declared pnpm major.
+
+### Behaviors
+
+- Local validation command `pnpm validate:lockfile` exists and fails on major mismatch.
+- CI lockfile parity step uses the same repository validation command.
+
+### Optional local git hook parity check
+
+The repository provides optional repo-local git hooks to surface lockfile parity errors before commit.
+
+### Behaviors
+
+- Repository includes `.githooks/pre-commit` running `pnpm validate:lockfile`.
+- Repository exposes `pnpm hooks:install` to configure `core.hooksPath` to `.githooks`.
 
 ### Staging deployment
 
