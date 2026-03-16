@@ -49,7 +49,7 @@ test('lesson block navigation wiring', () => {
   assert.ok(lessonRoute.includes('learning-structure-toggle'))
   assert.ok(lessonRoute.includes('learning-structure-content-page'))
   assert.ok(lessonRoute.includes('learning-structure-exercise'))
-  assert.ok(lessonRoute.includes("search={{ block: 'summary' }}"))
+  assert.ok(lessonRoute.includes("buildSearch({ block: 'summary' })"))
   assert.ok(lessonRoute.includes("block: 'contentPage'"))
   assert.ok(lessonRoute.includes("block: 'exercise'"))
   assert.ok(lessonRoute.includes('learners.structure.title'))
@@ -151,6 +151,9 @@ test('learner attempt and progress persistence wiring', () => {
   const migration = read(
     'supabase/migrations/0006_learner_attempt_progress.sql',
   )
+  const historyMigration = read(
+    'supabase/migrations/0007_learner_attempt_history.sql',
+  )
 
   assert.ok(lessonRoute.includes('learnerCourseProgress(courseId: $id)'))
   assert.ok(lessonRoute.includes('upsertLearnerExerciseAttempt'))
@@ -166,8 +169,12 @@ test('learner attempt and progress persistence wiring', () => {
 
   assert.ok(courseResolver.includes('learnerCourseProgress'))
   assert.ok(courseResolver.includes('upsertLearnerExerciseAttempt'))
+  assert.ok(courseResolver.includes('learnerExerciseAttemptHistory'))
   assert.ok(courseRepositoryContract.includes('upsertLearnerExerciseAttempt'))
   assert.ok(courseRepositoryContract.includes('getLearnerCourseProgress'))
+  assert.ok(
+    courseRepositoryContract.includes('listLearnerExerciseAttemptHistory'),
+  )
 
   assert.ok(
     migration.includes(
@@ -179,6 +186,35 @@ test('learner attempt and progress persistence wiring', () => {
       'unique(user_id, course_id, course_version_id, lesson_id, exercise_id)',
     ),
   )
+
+  assert.ok(
+    historyMigration.includes(
+      'create table if not exists public.learner_exercise_attempt_history',
+    ),
+  )
+})
+
+test('review mode and attempt history wiring', () => {
+  const lessonRoute = read(
+    'apps/web/src/routes/courses.$courseId.lessons.$lessonId.tsx',
+  )
+  const resources = read('shared/shared-i18n/src/resources.ts')
+  const styles = read('apps/web/src/styles.css')
+
+  assert.ok(lessonRoute.includes("review === 'mistakes'"))
+  assert.ok(lessonRoute.includes('review-mode-toggle'))
+  assert.ok(lessonRoute.includes('review-pending-count'))
+  assert.ok(lessonRoute.includes("'learning-structure-row wrong'"))
+  assert.ok(lessonRoute.includes('learnerExerciseAttemptHistory'))
+  assert.ok(lessonRoute.includes('learning-structure-exercise-history'))
+  assert.ok(lessonRoute.includes('attempt-history-panel'))
+
+  assert.ok(resources.includes('learners.review.enable'))
+  assert.ok(resources.includes('learners.review.pendingCount'))
+  assert.ok(resources.includes('learners.review.historyTitle'))
+
+  assert.ok(styles.includes('.learning-structure-row.wrong'))
+  assert.ok(styles.includes('.attempt-history-panel'))
 })
 
 test('paid checkout web wiring', () => {

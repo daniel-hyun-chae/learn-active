@@ -98,6 +98,10 @@ A local-first draft of a learner's exercise attempt. Stored offline on the clien
 
 A server-persisted learner attempt record for a specific exercise in a specific lesson and published course version. Stores normalized answers, correctness, and attempt timestamp in `learner_exercise_attempts`.
 
+### LearnerExerciseAttemptHistory
+
+An append-only timeline of learner attempts for a specific exercise in a lesson and published course version. Stores normalized answers, correctness, and attempt timestamp per submission in `learner_exercise_attempt_history`.
+
 ## Maintenance
 
 - Add new terms when a domain concept is introduced in the codebase.

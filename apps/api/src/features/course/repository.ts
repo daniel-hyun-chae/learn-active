@@ -3,6 +3,7 @@ import type { createNodeDb } from '../../db/connection.js'
 import type {
   CourseProgressRecord,
   LearnerExerciseAttemptRecord,
+  LearnerExerciseAttemptHistoryRecord,
   ModuleProgressRecord,
   LessonProgressRecord,
   ExerciseAttemptStatusRecord,
@@ -74,6 +75,7 @@ type MemoryState = {
   enrollments: Map<string, EnrollmentRow>
   paymentsBySession: Map<string, PaymentRow>
   learnerAttemptsByKey: Map<string, LearnerExerciseAttemptRecord>
+  learnerAttemptHistory: LearnerExerciseAttemptHistoryRecord[]
 }
 
 function buildInitialState(): MemoryState {
@@ -85,6 +87,7 @@ function buildInitialState(): MemoryState {
     enrollments: new Map(),
     paymentsBySession: new Map(),
     learnerAttemptsByKey: new Map(),
+    learnerAttemptHistory: [],
   }
 
   const courseId = seedCourseRow.id
@@ -571,6 +574,7 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
     }) {
       const key = `${userId}:${courseId}:${courseVersionId}:${lessonId}:${exerciseId}`
       const previous = state.learnerAttemptsByKey.get(key)
+      const attemptedAt = nowIso()
       const attempt: LearnerExerciseAttemptRecord = {
         id: previous?.id ?? randomUUID(),
         userId,
@@ -580,9 +584,22 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
         exerciseId,
         answers: clone(answers),
         isCorrect,
-        attemptedAt: nowIso(),
+        attemptedAt,
       }
       state.learnerAttemptsByKey.set(key, attempt)
+
+      state.learnerAttemptHistory.push({
+        id: randomUUID(),
+        userId,
+        courseId,
+        courseVersionId,
+        lessonId,
+        exerciseId,
+        answers: clone(answers),
+        isCorrect,
+        attemptedAt,
+      })
+
       return clone(attempt)
     },
 
@@ -609,6 +626,26 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
         content: published.content,
         attempts,
       })
+    },
+
+    async listLearnerExerciseAttemptHistory({
+      userId,
+      courseId,
+      courseVersionId,
+      lessonId,
+      exerciseId,
+    }) {
+      return state.learnerAttemptHistory
+        .filter(
+          (attempt) =>
+            attempt.userId === userId &&
+            attempt.courseId === courseId &&
+            attempt.courseVersionId === courseVersionId &&
+            attempt.lessonId === lessonId &&
+            attempt.exerciseId === exerciseId,
+        )
+        .sort((a, b) => a.attemptedAt.localeCompare(b.attemptedAt))
+        .map((attempt) => clone(attempt))
     },
 
     async listPublisherCourses({ userId, email }) {

@@ -11,6 +11,7 @@ import type {
   ExerciseAttemptStatusRecord,
   LessonProgressRecord,
   LearnerExerciseAttemptRecord,
+  LearnerExerciseAttemptHistoryRecord,
   ModuleProgressRecord,
   EnrollmentRecord,
   PaymentRecord,
@@ -230,6 +231,30 @@ function mapLearnerAttemptRow(row: {
   is_correct: boolean
   attempted_at: string | Date
 }): LearnerExerciseAttemptRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    courseId: row.course_id,
+    courseVersionId: row.course_version_id,
+    lessonId: row.lesson_id,
+    exerciseId: row.exercise_id,
+    answers: normalizeAttemptAnswers(row.answers),
+    isCorrect: Boolean(row.is_correct),
+    attemptedAt: toIso(row.attempted_at) ?? nowIso(),
+  }
+}
+
+function mapLearnerAttemptHistoryRow(row: {
+  id: string
+  user_id: string
+  course_id: string
+  course_version_id: string
+  lesson_id: string
+  exercise_id: string
+  answers: unknown
+  is_correct: boolean
+  attempted_at: string | Date
+}): LearnerExerciseAttemptHistoryRecord {
   return {
     id: row.id,
     userId: row.user_id,
@@ -1099,6 +1124,47 @@ export function createNodePostgresCourseRepository(
       assertUuid(courseVersionId, 'courseVersionId')
       const dbCourseId = toDbCourseId(courseId)
 
+      await must(
+        client.from('learner_exercise_attempt_history').insert({
+          id: crypto.randomUUID(),
+          user_id: userId,
+          course_id: dbCourseId,
+          course_version_id: courseVersionId,
+          lesson_id: lessonId,
+          exercise_id: exerciseId,
+          answers: clone(answers),
+          is_correct: isCorrect,
+          attempted_at: nowIso(),
+        }),
+      )
+
+      await nodeRows(
+        db,
+        sql`
+          insert into public.learner_exercise_attempt_history (
+            id,
+            user_id,
+            course_id,
+            course_version_id,
+            lesson_id,
+            exercise_id,
+            answers,
+            is_correct,
+            attempted_at
+          ) values (
+            gen_random_uuid(),
+            ${userId}::uuid,
+            ${dbCourseId}::uuid,
+            ${courseVersionId}::uuid,
+            ${lessonId},
+            ${exerciseId},
+            ${JSON.stringify(answers)}::jsonb,
+            ${isCorrect},
+            timezone('utc', now())
+          )
+        `,
+      )
+
       const rows = await nodeRows<{
         id: string
         user_id: string
@@ -1227,6 +1293,53 @@ export function createNodePostgresCourseRepository(
         content: normalizeContent(courseRow.content),
         attempts: attempts.map((row) => mapLearnerAttemptRow(row)),
       })
+    },
+
+    async listLearnerExerciseAttemptHistory({
+      userId,
+      courseId,
+      courseVersionId,
+      lessonId,
+      exerciseId,
+    }) {
+      assertUuid(userId, 'userId')
+      assertUuid(courseVersionId, 'courseVersionId')
+      const dbCourseId = toDbCourseId(courseId)
+
+      const attempts = await nodeRows<{
+        id: string
+        user_id: string
+        course_id: string
+        course_version_id: string
+        lesson_id: string
+        exercise_id: string
+        answers: unknown
+        is_correct: boolean
+        attempted_at: string | Date
+      }>(
+        db,
+        sql`
+          select
+            id::text as id,
+            user_id::text as user_id,
+            course_id::text as course_id,
+            course_version_id::text as course_version_id,
+            lesson_id,
+            exercise_id,
+            answers,
+            is_correct,
+            attempted_at
+          from public.learner_exercise_attempt_history
+          where user_id = ${userId}::uuid
+            and course_id = ${dbCourseId}::uuid
+            and course_version_id = ${courseVersionId}::uuid
+            and lesson_id = ${lessonId}
+            and exercise_id = ${exerciseId}
+          order by attempted_at asc
+        `,
+      )
+
+      return attempts.map((row) => mapLearnerAttemptHistoryRow(row))
     },
 
     async listPublisherCourses({ userId, email }) {
@@ -2812,6 +2925,48 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
           ),
         ),
       })
+    },
+
+    async listLearnerExerciseAttemptHistory({
+      userId,
+      courseId,
+      courseVersionId,
+      lessonId,
+      exerciseId,
+    }) {
+      assertUuid(userId, 'userId')
+      assertUuid(courseVersionId, 'courseVersionId')
+      const dbCourseId = toDbCourseId(courseId)
+
+      const attempts = await must(
+        client
+          .from('learner_exercise_attempt_history')
+          .select(
+            'id, user_id, course_id, course_version_id, lesson_id, exercise_id, answers, is_correct, attempted_at',
+          )
+          .eq('user_id', userId)
+          .eq('course_id', dbCourseId)
+          .eq('course_version_id', courseVersionId)
+          .eq('lesson_id', lessonId)
+          .eq('exercise_id', exerciseId)
+          .order('attempted_at', { ascending: true }),
+      )
+
+      return attempts.map((row) =>
+        mapLearnerAttemptHistoryRow(
+          row as {
+            id: string
+            user_id: string
+            course_id: string
+            course_version_id: string
+            lesson_id: string
+            exercise_id: string
+            answers: unknown
+            is_correct: boolean
+            attempted_at: string | Date
+          },
+        ),
+      )
     },
 
     async listPublisherCourses({ userId, email }) {

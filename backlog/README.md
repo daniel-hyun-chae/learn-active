@@ -145,12 +145,12 @@ When implementation starts, the change-orchestrator appends these sections to th
 
 ### P1 -- Next Capabilities
 
-| ID     | Title                                    | Status   |
-| ------ | ---------------------------------------- | -------- |
-| BG-004 | Learner attempt and progress persistence | Done     |
-| BG-005 | Exercise type abstraction                | Done     |
-| BG-006 | Multiple-choice exercise end-to-end      | Done     |
-| BG-007 | Wrong-answer review queue                | Proposed |
+| ID     | Title                                    | Status |
+| ------ | ---------------------------------------- | ------ |
+| BG-004 | Learner attempt and progress persistence | Done   |
+| BG-005 | Exercise type abstraction                | Done   |
+| BG-006 | Multiple-choice exercise end-to-end      | Done   |
+| BG-007 | Wrong-answer review queue                | Done   |
 
 ### P2 -- After Foundation
 

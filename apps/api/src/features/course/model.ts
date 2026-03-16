@@ -369,6 +369,18 @@ export type LearnerExerciseAttemptRecord = {
   attemptedAt: string
 }
 
+export type LearnerExerciseAttemptHistoryRecord = {
+  id: string
+  userId: string
+  courseId: string
+  courseVersionId: string
+  lessonId: string
+  exerciseId: string
+  answers: Record<string, string>
+  isCorrect: boolean
+  attemptedAt: string
+}
+
 export type ExerciseAttemptStatusRecord = {
   exerciseId: string
   attempted: boolean

@@ -130,3 +130,18 @@ Learner attempts are stored server-side against the active published course vers
 - Course structure displays module-level completion percent and per-exercise attempt status.
 - Learner home course cards display course-level completed exercises out of total exercises.
 - Learner attempt records are scoped to a specific course version and keep stable exercise references.
+
+## Wrong-answer review mode and attempt timeline
+
+Learners can focus on mistakes from the normal lesson view and inspect all attempt history for each exercise.
+
+### Behaviors
+
+- Learner can toggle review mode in lesson view, and mode state persists in URL search.
+- Review mode shows only exercises where latest attempt is incorrect, nested under original module and lesson.
+- Modules and lessons without latest-wrong exercises are hidden in review mode.
+- Review mode highlights wrong exercises and shows pending wrong-exercise count for current course.
+- Retrying a wrong exercise and submitting a correct answer removes it from review mode immediately after refresh.
+- Learner can open exercise attempt timeline from structure row action.
+- Attempt timeline displays all attempts chronologically with correctness status and timestamp.
+- Attempt timeline is scoped to current learner, course, version, lesson, and exercise.

@@ -365,6 +365,36 @@ export class LearnerExerciseAttempt {
 }
 
 @ObjectType()
+export class LearnerExerciseAttemptHistoryEntry {
+  @Field(() => ID)
+  id!: string
+
+  @Field(() => ID)
+  userId!: string
+
+  @Field(() => ID)
+  courseId!: string
+
+  @Field(() => ID)
+  courseVersionId!: string
+
+  @Field(() => String)
+  lessonId!: string
+
+  @Field(() => String)
+  exerciseId!: string
+
+  @Field(() => [AttemptAnswer])
+  answers!: AttemptAnswer[]
+
+  @Field(() => Boolean)
+  isCorrect!: boolean
+
+  @Field(() => String)
+  attemptedAt!: string
+}
+
+@ObjectType()
 export class ExerciseAttemptStatus {
   @Field(() => String)
   exerciseId!: string
