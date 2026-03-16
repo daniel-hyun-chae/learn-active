@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 import { createHash } from 'node:crypto'
 import { sql } from 'drizzle-orm'
@@ -20,9 +21,6 @@ import { seedCourseRow } from './seed.js'
 import type { CourseRepository } from './repository-contract.js'
 
 type NodeDb = NonNullable<Awaited<ReturnType<typeof createNodeDb>>>
-type CourseWriteRow = Parameters<
-  CourseRepository['upsertPublisherCourse']
->[0]['row']
 
 type DbCourseIdentity = {
   id: string
@@ -405,13 +403,15 @@ async function ensureNodeSeedCourse(db: NodeDb) {
   const slugBase = `${slugify(seedCourseRow.title)}-seed`
   let slug = slugBase
   let suffix = 1
-  while (true) {
+  let slugAvailable = false
+  while (!slugAvailable) {
     const taken = await nodeRows<{ id: string }>(
       db,
       sql`select id::text as id from public.courses where slug = ${slug} limit 1`,
     )
     if (!taken[0]) {
-      break
+      slugAvailable = true
+      continue
     }
     slug = `${slugBase}-${suffix++}`
   }
@@ -617,16 +617,20 @@ export function createNodePostgresCourseRepository(
     let slug = slugBase
     let suffix = 1
 
-    while (true) {
+    let slugExists = true
+    while (slugExists) {
       const rows = await nodeRows<{ id: string }>(
         db,
         sql`select id::text as id from public.courses where slug = ${slug} limit 1`,
       )
       if (!rows[0]) {
-        return slug
+        slugExists = false
+        continue
       }
       slug = `${slugBase}-${suffix++}`
     }
+
+    return slug
   }
 
   return {
@@ -1348,7 +1352,6 @@ export function createNodePostgresCourseRepository(
         `,
       )
 
-      let course: DbCourseIdentity
       if (!existing[0]) {
         const slug = await uniqueSlug(row.title)
         await nodeRows(
@@ -1424,7 +1427,7 @@ export function createNodePostgresCourseRepository(
         return mapPublisherJoinedRow(createdDraft[0])
       }
 
-      course = existing[0]
+      const course = existing[0]
       if (course.owner_id !== ownerId) {
         throw new Error('Course is not editable by current publisher.')
       }
@@ -1983,12 +1986,14 @@ async function ensureWorkerSeedCourse(client: SupabaseClient) {
   const slugBase = `${slugify(seedCourseRow.title)}-seed`
   let slug = slugBase
   let suffix = 1
-  while (true) {
+  let slugAvailable = false
+  while (!slugAvailable) {
     const row = await must(
       client.from('courses').select('id').eq('slug', slug).maybeSingle(),
     )
     if (!row?.id) {
-      break
+      slugAvailable = true
+      continue
     }
     slug = `${slugBase}-${suffix++}`
   }
@@ -2161,15 +2166,19 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
     const base = slugify(title)
     let slug = base
     let suffix = 1
-    while (true) {
+    let slugExists = true
+    while (slugExists) {
       const row = await must(
         client.from('courses').select('id').eq('slug', slug).maybeSingle(),
       )
       if (!row?.id) {
-        return slug
+        slugExists = false
+        continue
       }
       slug = `${base}-${suffix++}`
     }
+
+    return slug
   }
 
   async function hydratePublicRows(courseRows: DbCourseIdentity[]) {

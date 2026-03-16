@@ -20,3 +20,10 @@ Before marking work complete, confirm:
 
 - Localization readiness verified for new/changed user-facing strings.
 - Pnpm major and lockfile major parity validated.
+- CI-equivalent local validation suite run and passing:
+  - `pnpm validate:lockfile`
+  - `pnpm lint`
+  - `pnpm build`
+  - `pnpm test:unit`
+  - `pnpm test:integration`
+  - `pnpm test:e2e`

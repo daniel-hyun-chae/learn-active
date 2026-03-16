@@ -2,8 +2,6 @@ import { randomUUID } from 'node:crypto'
 import type { createNodeDb } from '../../db/connection.js'
 import type {
   CourseProgressRecord,
-  CourseVersionDiffRecord,
-  CourseVersionHistoryRecord,
   LearnerExerciseAttemptRecord,
   ModuleProgressRecord,
   LessonProgressRecord,
@@ -13,7 +11,7 @@ import type {
   PublicCourseRecord,
   PublisherCourseRecord,
 } from './model.js'
-import type { CourseRepository, CourseWriteRow } from './repository-contract.js'
+import type { CourseRepository } from './repository-contract.js'
 import {
   createNodePostgresCourseRepository,
   createWorkerSupabaseCourseRepositoryImpl,

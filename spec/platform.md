@@ -228,6 +228,15 @@ Every pull request is validated with consistent monorepo checks before merge.
 - React Native participates in CI checks only.
 - CI validates pnpm major and lockfile major parity using a shared repository script.
 
+### CI-equivalent local validation gate
+
+Implementation completion requires local validation parity with CI checks.
+
+### Behaviors
+
+- Product implementation gate requires `pnpm validate:lockfile`, `pnpm lint`, `pnpm build`, `pnpm test:unit`, `pnpm test:integration`, and `pnpm test:e2e` before completion.
+- Backlog implementation template includes validation and test command result entries for the same CI-equivalent suite.
+
 ### Pnpm lockfile parity
 
 The repository enforces lockfile major parity with the repository-declared pnpm major.

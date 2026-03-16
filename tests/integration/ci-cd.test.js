@@ -14,6 +14,9 @@ test('pull request validation workflow wiring', () => {
   const workflow = read('.github/workflows/ci-validation.yml')
   const rootPackage = read('package.json')
   const lockfileScript = read('scripts/validate-pnpm-lockfile-major.mjs')
+  const productGuidelines = read('.opencode/rules/product-guidelines.md')
+  const orchestrator = read('.opencode/agents/change-orchestrator.md')
+  const backlogReadme = read('backlog/README.md')
 
   assert.ok(workflow.includes('name: CI Validation'))
   assert.ok(workflow.includes('pull_request:'))
@@ -33,6 +36,18 @@ test('pull request validation workflow wiring', () => {
   assert.ok(lockfileScript.includes('Expected pnpm major from packageManager'))
   assert.ok(lockfileScript.includes('Detected lockfile major'))
   assert.ok(lockfileScript.includes('pnpm major and lockfile major mismatch'))
+
+  assert.ok(productGuidelines.includes('CI-equivalent local validation suite'))
+  assert.ok(productGuidelines.includes('pnpm validate:lockfile'))
+  assert.ok(productGuidelines.includes('pnpm lint'))
+  assert.ok(productGuidelines.includes('pnpm build'))
+  assert.ok(orchestrator.includes('Testing and validation'))
+  assert.ok(orchestrator.includes('pnpm validate:lockfile'))
+  assert.ok(orchestrator.includes('pnpm lint'))
+  assert.ok(orchestrator.includes('pnpm build'))
+  assert.ok(backlogReadme.includes('`pnpm validate:lockfile` -> <result>'))
+  assert.ok(backlogReadme.includes('`pnpm lint` -> <result>'))
+  assert.ok(backlogReadme.includes('`pnpm build` -> <result>'))
 })
 
 test('staging deployment workflow wiring', () => {

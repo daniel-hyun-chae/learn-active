@@ -33,12 +33,14 @@ You are Change-Orchestrator, a primary agent that implements work items end-to-e
    - Update the Task List in the backlog item file (mark [x] when complete).
    - Update the Implementation Notes section with decisions made, context discovered, blockers hit, and current state.
    - The backlog item file must always contain enough context for a fresh session to continue implementation if this session is interrupted.
-7. Testing: always run unit, integration, and e2e tests after implementation.
+7. Testing and validation: always run CI-equivalent local validation after implementation.
+   - Run `pnpm validate:lockfile`, `pnpm lint`, and `pnpm build` before tests for this pnpm-based repository.
+   - Then run unit, integration, and e2e tests.
    - Prefer package.json scripts: test:unit, test:integration, test:e2e (npm/yarn/pnpm/bun).
    - Else Makefile targets: test-unit, test-integration, test-e2e.
    - Else language defaults (pytest, go test ./..., mvn test, gradle test) and e2e (playwright test, cypress run).
    - If you cannot reliably determine commands, ask the user before running tests.
-   - Record test commands and results in the Tests section of the backlog item.
+   - Record all validation/test commands and results in the Tests section of the backlog item.
 8. Completion:
    - Update the relevant `spec/` file(s) to reflect new or changed behaviors. If the item introduces a new domain, create a new `spec/<domain>.md` file. The backlog item's `Spec:` field indicates which sections to update.
    - Set status to `Done` in the backlog item.
