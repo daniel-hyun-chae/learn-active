@@ -268,6 +268,7 @@ Merges to `main` automatically deploy staging resources.
 - Staging deployment requires Stripe staging secrets.
 - Staging API deploy performs post-deploy health verification with CORS headers.
 - Staging API deploy preserves existing hosted Worker vars across redeploys.
+- Staging deploy contract requires `SUPABASE_SERVICE_ROLE_KEY_STAGING` and syncs `SUPABASE_SERVICE_ROLE_KEY` to the staging Worker before deploy.
 
 ### Production deployment
 
@@ -282,6 +283,7 @@ Production releases are manual and support redeploy/rollback by commit ref.
 - Production deployment validates environment contract before deployment.
 - Production API deploy performs post-deploy health verification.
 - Production API deploy preserves existing hosted Worker vars across redeploys.
+- Production deploy contract requires `SUPABASE_SERVICE_ROLE_KEY_PROD` and syncs `SUPABASE_SERVICE_ROLE_KEY` to the production Worker before deploy.
 
 ### Monorepo-aware deployment
 

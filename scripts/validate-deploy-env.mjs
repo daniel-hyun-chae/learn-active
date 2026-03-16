@@ -79,6 +79,7 @@ function run() {
   const requiredKeys = [
     `SUPABASE_PROJECT_URL_${suffix}`,
     `SUPABASE_PUBLISHABLE_KEY_${suffix}`,
+    `SUPABASE_SERVICE_ROLE_KEY_${suffix}`,
     `API_URL_${suffix}`,
     `WEB_URL_${suffix}`,
     `STRIPE_SECRET_KEY_${suffix}`,

@@ -78,6 +78,7 @@ jobs:
         env:
           SUPABASE_PROJECT_URL_PROD: ${{ secrets.SUPABASE_PROJECT_URL_PROD }}
           SUPABASE_PUBLISHABLE_KEY_PROD: ${{ secrets.SUPABASE_PUBLISHABLE_KEY_PROD }}
+          SUPABASE_SERVICE_ROLE_KEY_PROD: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY_PROD }}
           API_URL_PROD: ${{ secrets.API_URL_PROD }}
           WEB_URL_PROD: ${{ secrets.WEB_URL_PROD }}
           STRIPE_SECRET_KEY_PROD: ${{ secrets.STRIPE_SECRET_KEY_PROD }}
@@ -89,9 +90,11 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SUPABASE_SERVICE_ROLE_KEY_PROD: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY_PROD }}
           STRIPE_SECRET_KEY_PROD: ${{ secrets.STRIPE_SECRET_KEY_PROD }}
           STRIPE_WEBHOOK_SECRET_PROD: ${{ secrets.STRIPE_WEBHOOK_SECRET_PROD }}
         run: |
+          printf '%s' "$SUPABASE_SERVICE_ROLE_KEY_PROD" | pnpm --filter @app/api exec wrangler secret put SUPABASE_SERVICE_ROLE_KEY --name course-api
           printf '%s' "$STRIPE_SECRET_KEY_PROD" | pnpm --filter @app/api exec wrangler secret put STRIPE_SECRET_KEY --name course-api
           printf '%s' "$STRIPE_WEBHOOK_SECRET_PROD" | pnpm --filter @app/api exec wrangler secret put STRIPE_WEBHOOK_SECRET --name course-api
 
@@ -137,6 +140,7 @@ jobs:
         env:
           SUPABASE_PROJECT_URL_PROD: ${{ secrets.SUPABASE_PROJECT_URL_PROD }}
           SUPABASE_PUBLISHABLE_KEY_PROD: ${{ secrets.SUPABASE_PUBLISHABLE_KEY_PROD }}
+          SUPABASE_SERVICE_ROLE_KEY_PROD: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY_PROD }}
           API_URL_PROD: ${{ secrets.API_URL_PROD }}
           WEB_URL_PROD: ${{ secrets.WEB_URL_PROD }}
           STRIPE_SECRET_KEY_PROD: ${{ secrets.STRIPE_SECRET_KEY_PROD }}

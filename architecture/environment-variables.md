@@ -39,6 +39,7 @@ These are shared deploy credentials used by staging and production workflows:
 
 - `SUPABASE_PROJECT_URL_STAGING`
 - `SUPABASE_PUBLISHABLE_KEY_STAGING`
+- `SUPABASE_SERVICE_ROLE_KEY_STAGING`
 - `API_URL_STAGING`
 - `WEB_URL_STAGING`
 - `STRIPE_SECRET_KEY_STAGING`
@@ -49,6 +50,7 @@ These are shared deploy credentials used by staging and production workflows:
 
 - `SUPABASE_PROJECT_URL_PROD`
 - `SUPABASE_PUBLISHABLE_KEY_PROD`
+- `SUPABASE_SERVICE_ROLE_KEY_PROD`
 - `API_URL_PROD`
 - `WEB_URL_PROD`
 - `STRIPE_SECRET_KEY_PROD`

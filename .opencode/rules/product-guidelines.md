@@ -27,3 +27,4 @@ Before marking work complete, confirm:
   - `pnpm test:unit`
   - `pnpm test:integration`
   - `pnpm test:e2e`
+- Hosted deploy secret contract updates kept in sync across validator scripts, deploy workflows, and architecture docs when runtime-required secrets change.
