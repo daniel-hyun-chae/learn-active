@@ -18,7 +18,7 @@ test('course list wiring', () => {
   )
   const courseSeed = read('apps/api/src/features/course/seed.ts')
 
-  assert.ok(courseSeed.includes('German Essentials: Greetings'))
+  assert.ok(courseSeed.includes('Deutsch B1: Alltag und Beruf im Gesprach'))
   assert.ok(!courseSeed.includes('language:'))
   assert.ok(learnerHome.includes('course-card'))
   assert.ok(learnerHome.includes('course-link'))
@@ -77,8 +77,8 @@ test('fill in blank exercise wiring', () => {
   assert.ok(exercise.includes('exercise-blank'))
   assert.ok(exercise.includes('exercise-option'))
   assert.ok(mobileExercise.includes('learners.exercise.optionsLabel'))
-  assert.ok(seed.includes('blank-german-3'))
-  assert.ok(seed.includes('blank-german-4'))
+  assert.ok(seed.includes('blank-b1-termin-fib-2'))
+  assert.ok(seed.includes('blank-b1-meinung-fib-1'))
   assert.ok(seed.includes('fillInBlank'))
 })
 
@@ -117,7 +117,8 @@ test('multiple choice exercise wiring', () => {
 
   assert.ok(seed.includes('ExerciseType.MULTIPLE_CHOICE'))
   assert.ok(seed.includes('multipleChoice:'))
-  assert.ok(seed.includes('choice-german-1'))
+  assert.ok(seed.includes('choice-b1-termin-mc-1'))
+  assert.ok(seed.includes('allowsMultiple: true'))
 
   assert.ok(publisherHome.includes('publisher-exercise-type'))
   assert.ok(publisherHome.includes('publisher-multiple-choice-allows-multiple'))
@@ -154,24 +155,36 @@ test('learner attempt and progress persistence wiring', () => {
   const historyMigration = read(
     'supabase/migrations/0007_learner_attempt_history.sql',
   )
+  const runtimeServices = read('apps/api/src/runtime/services.ts')
+  const repositoryDb = read('apps/api/src/features/course/repository-db.ts')
 
   assert.ok(lessonRoute.includes('learnerCourseProgress(courseId: $id)'))
+  assert.ok(lessonRoute.includes('learnerCourse(id: $id) {'))
+  assert.ok(lessonRoute.includes('versionId'))
   assert.ok(lessonRoute.includes('upsertLearnerExerciseAttempt'))
   assert.ok(lessonRoute.includes('learners.progress.lessonSummary'))
   assert.ok(lessonRoute.includes('learners.progress.modulePercent'))
   assert.ok(lessonRoute.includes('learners.progress.exerciseStatusAttempted'))
 
   assert.ok(fillInBlankExercise.includes('onSubmitAttempt'))
+  assert.ok(fillInBlankExercise.includes('fill-in-blank-feedback'))
+  assert.ok(fillInBlankExercise.includes('learners.exercise.feedbackCorrect'))
+  assert.ok(fillInBlankExercise.includes('learners.exercise.submitError'))
   assert.ok(multipleChoiceExercise.includes('onSubmitAttempt'))
+  assert.ok(multipleChoiceExercise.includes('multiple-choice-submit-error'))
+  assert.ok(multipleChoiceExercise.includes('learners.exercise.submitting'))
+  assert.ok(multipleChoiceExercise.includes('submitted && !submissionError'))
 
   assert.ok(learnRoute.includes('learnerCourseProgress(courseId: $courseId)'))
   assert.ok(learnerHome.includes('course-card-progress'))
 
   assert.ok(courseResolver.includes('learnerCourseProgress'))
   assert.ok(courseResolver.includes('upsertLearnerExerciseAttempt'))
+  assert.ok(courseResolver.includes('Course is not available to this learner.'))
   assert.ok(courseResolver.includes('learnerExerciseAttemptHistory'))
   assert.ok(courseRepositoryContract.includes('upsertLearnerExerciseAttempt'))
   assert.ok(courseRepositoryContract.includes('getLearnerCourseProgress'))
+  assert.ok(courseRepositoryContract.includes('ensureSystemSeedCourse'))
   assert.ok(
     courseRepositoryContract.includes('listLearnerExerciseAttemptHistory'),
   )
@@ -192,6 +205,26 @@ test('learner attempt and progress persistence wiring', () => {
       'create table if not exists public.learner_exercise_attempt_history',
     ),
   )
+
+  assert.ok(
+    runtimeServices.includes('await courseRepository.ensureSystemSeedCourse()'),
+  )
+  assert.ok(repositoryDb.includes("and e.status in ('active', 'completed')"))
+  assert.ok(repositoryDb.includes("from('learner_exercise_attempt_history')"))
+})
+
+test('seed course includes all learner elements multiple times', () => {
+  const seed = read('apps/api/src/features/course/seed.ts')
+
+  assert.ok(seed.includes('ContentType.TEXT'))
+  assert.ok(seed.includes('ContentType.IMAGE'))
+  assert.ok(seed.includes('contentPages: ['))
+  assert.ok(seed.includes('ExerciseType.FILL_IN_THE_BLANK'))
+  assert.ok(seed.includes('ExerciseType.MULTIPLE_CHOICE'))
+  assert.ok(seed.includes('allowsMultiple: false'))
+  assert.ok(seed.includes('allowsMultiple: true'))
+  assert.ok(seed.includes('module-b1-kommunikation'))
+  assert.ok(seed.includes('module-b1-argumentation'))
 })
 
 test('review mode and attempt history wiring', () => {

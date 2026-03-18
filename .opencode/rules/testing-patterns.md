@@ -22,6 +22,18 @@ Every database repository function must be tested for:
 - Constraint violation (duplicate key, FK violation) returns a meaningful error.
 - Filters and pagination return correct subsets when applicable.
 
+When multiple runtime-specific repository implementations exist for the same contract (for example Node/Postgres and Worker/Supabase), tests must validate behavioral parity for critical user flows, not just wiring.
+
+## Learner Attempt and Progression Flows
+
+Every learner attempt/progression implementation must be tested for:
+
+- Attempt submission persists latest attempt status and append-only attempt history.
+- Progress summaries update after submission for lesson/module/course aggregates.
+- Learner course detail and attempt/progress operations are enrollment-gated for the authenticated learner.
+- Non-enrolled learner attempt submission is rejected with clear authorization or availability error.
+- Runtime parity holds across repository implementations for submission, history, and progress behavior.
+
 ## UI Components (Interactive)
 
 Every interactive UI component must be tested for:

@@ -79,6 +79,15 @@ This configures `core.hooksPath` to `.githooks/` and runs `pnpm validate:lockfil
 - Web: http://localhost:4100
 - GraphQL API: http://localhost:4000/graphql
 
+Supabase local auth and Mailpit are expected on:
+
+- Supabase auth/API gateway: http://localhost:15421
+- Mailpit UI: http://localhost:15424
+
+If login fails with `TypeError: Failed to fetch` against local Supabase auth in a devcontainer session, open VS Code Ports and ensure container ports `15421` and `15424` are forwarded to the same local ports (not random high ports). These defaults avoid Windows-reserved `54xxx` ranges.
+
+If GraphQL requests fail in devcontainer because API forwarding uses a non-default local port, set `VITE_GRAPHQL_FORWARD_PORT` in `.env.local` to your forwarded API host port so browser requests normalize correctly.
+
 For React Native local validation, use:
 
 - `EXPO_PUBLIC_GRAPHQL_ENDPOINT=http://localhost:4000/graphql`

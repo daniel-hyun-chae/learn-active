@@ -7,7 +7,7 @@ const includeEdgeRuntime =
   process.argv.includes('--with-edge-runtime') ||
   process.env.SUPABASE_INCLUDE_EDGE_RUNTIME === 'true'
 const defaultDatabaseUrl =
-  'postgresql://postgres:postgres@localhost:54322/postgres'
+  'postgresql://postgres:postgres@localhost:15422/postgres'
 
 function run(commandName, args, options = {}) {
   const result = spawnSync(commandName, args, {
@@ -77,7 +77,7 @@ async function waitForHttpOk(url, timeoutMs = 60000, intervalMs = 1000) {
 }
 
 async function ensureAuthHealthyWithSingleRetry(startArgs) {
-  const authHealthUrl = 'http://127.0.0.1:54321/auth/v1/health'
+  const authHealthUrl = 'http://127.0.0.1:15421/auth/v1/health'
 
   try {
     await waitForHttpOk(authHealthUrl, 60000)

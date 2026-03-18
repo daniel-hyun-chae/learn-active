@@ -496,6 +496,10 @@ const webProcess = startMonitoredProcess(
             SUPABASE_URL: runtimeEnv.SUPABASE_URL ?? supabaseWebRuntime.url,
             VITE_SUPABASE_URL:
               runtimeEnv.VITE_SUPABASE_URL ?? supabaseWebRuntime.url,
+            VITE_SUPABASE_FORWARD_PORT:
+              runtimeEnv.VITE_SUPABASE_FORWARD_PORT ?? '15421',
+            VITE_GRAPHQL_FORWARD_PORT:
+              runtimeEnv.VITE_GRAPHQL_FORWARD_PORT ?? String(apiPort),
             VITE_SUPABASE_PUBLISHABLE_KEY:
               runtimeEnv.VITE_SUPABASE_PUBLISHABLE_KEY ??
               supabaseWebRuntime.publishableKey,

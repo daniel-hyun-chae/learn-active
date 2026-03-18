@@ -144,7 +144,9 @@ The devcontainer uses Docker Compose with a `dev` service that connects to the h
 ### Behaviors
 
 - `.devcontainer/devcontainer.json` exists and uses docker-compose with a dev service.
-- Devcontainer forwards ports 4000 and 4100.
+- Devcontainer forwards ports 4000, 4100, 15421, and 15424.
+- Devcontainer requires local-port parity for forwarded ports used by web/api, Supabase auth, and Mailpit.
+- Local Supabase defaults avoid Windows-reserved `54xxx` port ranges by using `1542x` ports.
 - Post-start hook does not run DB migrations.
 - `pnpm dev` is the command that runs fail-hard setup and migrations before the dev stack.
 - Dev service sets DATABASE_URL for Supabase local Postgres.
@@ -181,7 +183,7 @@ Runtime configuration is documented and templated.
 
 ### Behaviors
 
-- `.env.example` exists and lists database, Supabase, GraphQL endpoint, and local Stripe bootstrap variables.
+- `.env.example` exists and lists database, Supabase, GraphQL endpoint, local Supabase browser-forward override, and local Stripe bootstrap variables.
 - README documents the canonical local startup flow and .env usage.
 - README documents a repo-local cleanup command for orphaned dev-stack processes.
 - Shared config reads GRAPHQL_ENDPOINT and VITE_GRAPHQL_ENDPOINT when present.
@@ -269,6 +271,7 @@ Merges to `main` automatically deploy staging resources.
 - Staging API deploy performs post-deploy health verification with CORS headers.
 - Staging API deploy preserves existing hosted Worker vars across redeploys.
 - Staging deploy contract requires `SUPABASE_SERVICE_ROLE_KEY_STAGING` and syncs `SUPABASE_SERVICE_ROLE_KEY` to the staging Worker before deploy.
+- Local and staging runtime service startup enforces idempotent system seed provisioning so sample content is always available.
 
 ### Production deployment
 
@@ -338,6 +341,15 @@ The codebase map provides accurate structural orientation for AI agents and huma
 - `architecture/codebase-map.md` exists and contains module-level path references.
 - Every path referenced in the codebase map exists in the repository.
 - An integration test validates codebase map paths.
+
+### Testing patterns governance
+
+Repository-level testing patterns define required architecture-checklist coverage for runtime parity and learner progression correctness.
+
+### Behaviors
+
+- `.opencode/rules/testing-patterns.md` includes runtime repository parity requirements for critical user flows.
+- `.opencode/rules/testing-patterns.md` includes learner attempt/progression checklist coverage for submission persistence, history append, enrollment gating, and progress updates.
 
 ### Domain glossary
 

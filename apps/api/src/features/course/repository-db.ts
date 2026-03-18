@@ -395,11 +395,123 @@ async function nodeRows<T>(db: NodeDb, statement: ReturnType<typeof sql>) {
 async function ensureNodeSeedCourse(db: NodeDb) {
   const seedCourseId = toDbCourseId(seedCourseRow.id)
 
-  const existing = await nodeRows<{ id: string }>(
+  const existingCourse = await nodeRows<{ id: string; slug: string }>(
     db,
-    sql`select id::text as id from public.courses where id = ${seedCourseId}::uuid limit 1`,
+    sql`select id::text as id, slug from public.courses where id = ${seedCourseId}::uuid limit 1`,
   )
-  if (existing[0]) {
+
+  if (existingCourse[0]) {
+    const courseRow = existingCourse[0]
+    const published = await nodeRows<{
+      version_id: string
+      version: number
+    }>(
+      db,
+      sql`
+        select
+          cp.published_version_id::text as version_id,
+          cv.version
+        from public.course_publications cp
+        join public.course_versions cv on cv.id = cp.published_version_id
+        where cp.course_id = ${seedCourseId}::uuid
+        limit 1
+      `,
+    )
+
+    const nextVersion = (published[0]?.version ?? 0) + 1
+    const versionId = crypto.randomUUID()
+
+    await nodeRows(
+      db,
+      sql`
+        update public.course_versions
+        set status = 'archived',
+            archived_at = timezone('utc', now())
+        where course_id = ${seedCourseId}::uuid
+          and status = 'draft'
+      `,
+    )
+
+    await nodeRows(
+      db,
+      sql`
+        insert into public.course_versions (
+          id,
+          course_id,
+          version,
+          status,
+          title,
+          description,
+          content,
+          change_note,
+          created_by,
+          published_at,
+          archived_at
+        ) values (
+          ${versionId}::uuid,
+          ${seedCourseId}::uuid,
+          ${nextVersion},
+          'draft',
+          ${seedCourseRow.title},
+          ${seedCourseRow.description},
+          ${JSON.stringify(seedCourseRow.content)}::jsonb,
+          'Seed content refresh',
+          ${SYSTEM_PROFILE_USER_ID}::uuid,
+          null,
+          null
+        )
+      `,
+    )
+
+    await nodeRows(
+      db,
+      sql`
+        update public.courses
+        set slug = ${courseRow.slug},
+            updated_at = timezone('utc', now())
+        where id = ${seedCourseId}::uuid
+      `,
+    )
+
+    if (published[0]?.version_id) {
+      await nodeRows(
+        db,
+        sql`
+          update public.course_versions
+          set status = 'archived',
+              archived_at = timezone('utc', now())
+          where id = ${published[0].version_id}::uuid
+        `,
+      )
+    }
+
+    await nodeRows(
+      db,
+      sql`
+        update public.course_versions
+        set status = 'published',
+            published_at = timezone('utc', now()),
+            archived_at = null
+        where id = ${versionId}::uuid
+      `,
+    )
+
+    await nodeRows(
+      db,
+      sql`
+        insert into public.course_publications (course_id, published_version_id, published_at)
+        values (
+          ${seedCourseId}::uuid,
+          ${versionId}::uuid,
+          timezone('utc', now())
+        )
+        on conflict (course_id)
+        do update set
+          published_version_id = excluded.published_version_id,
+          published_at = excluded.published_at
+      `,
+    )
+
     return
   }
 
@@ -659,6 +771,10 @@ export function createNodePostgresCourseRepository(
   }
 
   return {
+    async ensureSystemSeedCourse() {
+      await ensureSeed()
+    },
+
     provisionPersonalOwner,
 
     async listPublicCourses() {
@@ -1076,7 +1192,8 @@ export function createNodePostgresCourseRepository(
       return rows.map((row) => mapPublisherJoinedRow(row))
     },
 
-    async getLearnerCourseById({ id }) {
+    async getLearnerCourseById({ userId, id }) {
+      assertUuid(userId, 'userId')
       const dbCourseId = toDbCourseId(id)
 
       const rows = await nodeRows<PublisherJoinedRow>(
@@ -1100,10 +1217,13 @@ export function createNodePostgresCourseRepository(
             v.created_by::text as created_by,
             v.published_at,
             v.archived_at
-          from public.courses c
+          from public.enrollments e
+          join public.courses c on c.id = e.course_id
           join public.course_publications cp on cp.course_id = c.id
           join public.course_versions v on v.id = cp.published_version_id
-          where c.id = ${dbCourseId}::uuid
+          where e.user_id = ${userId}::uuid
+            and e.course_id = ${dbCourseId}::uuid
+            and e.status in ('active', 'completed')
           limit 1
         `,
       )
@@ -1123,20 +1243,6 @@ export function createNodePostgresCourseRepository(
       assertUuid(userId, 'userId')
       assertUuid(courseVersionId, 'courseVersionId')
       const dbCourseId = toDbCourseId(courseId)
-
-      await must(
-        client.from('learner_exercise_attempt_history').insert({
-          id: crypto.randomUUID(),
-          user_id: userId,
-          course_id: dbCourseId,
-          course_version_id: courseVersionId,
-          lesson_id: lessonId,
-          exercise_id: exerciseId,
-          answers: clone(answers),
-          is_correct: isCorrect,
-          attempted_at: nowIso(),
-        }),
-      )
 
       await nodeRows(
         db,
@@ -1224,36 +1330,11 @@ export function createNodePostgresCourseRepository(
       assertUuid(userId, 'userId')
       const dbCourseId = toDbCourseId(courseId)
 
-      const courseRows = await nodeRows<PublisherJoinedRow>(
-        db,
-        sql`
-          select
-            c.id::text as course_id,
-            c.slug,
-            c.owner_id::text as owner_id,
-            c.price_cents,
-            c.currency,
-            c.stripe_price_id,
-            v.id::text as version_id,
-            v.version,
-            v.status,
-            v.title,
-            v.description,
-            v.content,
-            v.change_note,
-            v.created_at,
-            v.created_by::text as created_by,
-            v.published_at,
-            v.archived_at
-          from public.courses c
-          join public.course_publications cp on cp.course_id = c.id
-          join public.course_versions v on v.id = cp.published_version_id
-          where c.id = ${dbCourseId}::uuid
-          limit 1
-        `,
-      )
-      const courseRow = courseRows[0]
-      if (!courseRow) {
+      const course = await this.getLearnerCourseById({
+        userId,
+        id: courseId,
+      })
+      if (!course) {
         return null
       }
 
@@ -1283,14 +1364,14 @@ export function createNodePostgresCourseRepository(
           from public.learner_exercise_attempts
           where user_id = ${userId}::uuid
             and course_id = ${dbCourseId}::uuid
-            and course_version_id = ${courseRow.version_id}::uuid
+            and course_version_id = ${course.versionId}::uuid
         `,
       )
 
       return buildCourseProgressFromContent({
-        courseId: courseRow.course_id,
-        courseVersionId: courseRow.version_id,
-        content: normalizeContent(courseRow.content),
+        courseId: course.courseId,
+        courseVersionId: course.versionId,
+        content: normalizeContent(course.content),
         attempts: attempts.map((row) => mapLearnerAttemptRow(row)),
       })
     },
@@ -2062,9 +2143,93 @@ async function ensureWorkerSeedCourse(client: SupabaseClient) {
   const seedCourseId = toDbCourseId(seedCourseRow.id)
 
   const existing = await must(
-    client.from('courses').select('id').eq('id', seedCourseId).maybeSingle(),
+    client
+      .from('courses')
+      .select('id, slug')
+      .eq('id', seedCourseId)
+      .maybeSingle(),
   )
+
   if (existing?.id) {
+    const publication = await must(
+      client
+        .from('course_publications')
+        .select('published_version_id')
+        .eq('course_id', seedCourseId)
+        .maybeSingle(),
+    )
+
+    let currentVersion = 0
+    if (publication?.published_version_id) {
+      const current = await must(
+        client
+          .from('course_versions')
+          .select('version')
+          .eq('id', publication.published_version_id)
+          .maybeSingle(),
+      )
+      currentVersion = Number(current?.version ?? 0)
+    }
+
+    const nextVersion = currentVersion + 1
+
+    const versionId = crypto.randomUUID()
+
+    await must(
+      client
+        .from('course_versions')
+        .update({ status: 'archived', archived_at: nowIso() })
+        .eq('course_id', seedCourseId)
+        .eq('status', 'draft'),
+    )
+
+    await must(
+      client.from('course_versions').insert({
+        id: versionId,
+        course_id: seedCourseId,
+        version: nextVersion,
+        status: 'draft',
+        title: seedCourseRow.title,
+        description: seedCourseRow.description,
+        content: clone(seedCourseRow.content),
+        change_note: 'Seed content refresh',
+        created_by: SYSTEM_PROFILE_USER_ID,
+        published_at: null,
+        archived_at: null,
+      }),
+    )
+
+    if (publication?.published_version_id) {
+      await must(
+        client
+          .from('course_versions')
+          .update({ status: 'archived', archived_at: nowIso() })
+          .eq('id', publication.published_version_id),
+      )
+    }
+
+    await must(
+      client
+        .from('course_versions')
+        .update({
+          status: 'published',
+          published_at: nowIso(),
+          archived_at: null,
+        })
+        .eq('id', versionId),
+    )
+
+    await must(
+      client.from('course_publications').upsert(
+        {
+          course_id: seedCourseId,
+          published_version_id: versionId,
+          published_at: nowIso(),
+        },
+        { onConflict: 'course_id' },
+      ),
+    )
+
     return
   }
 
@@ -2460,6 +2625,10 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
   }
 
   return {
+    async ensureSystemSeedCourse() {
+      await ensureSeed()
+    },
+
     provisionPersonalOwner,
 
     async listPublicCourses() {
@@ -2529,6 +2698,8 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
     async enrollInCourse({ userId, courseId }) {
       assertUuid(userId, 'userId')
       const dbCourseId = toDbCourseId(courseId)
+
+      await ensureSeed()
 
       const publication = await must(
         client
@@ -2785,8 +2956,22 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
         .filter((row): row is PublisherCourseRecord => Boolean(row))
     },
 
-    async getLearnerCourseById({ id }) {
+    async getLearnerCourseById({ userId, id }) {
+      assertUuid(userId, 'userId')
       const dbCourseId = toDbCourseId(id)
+      const enrollment = await must(
+        client
+          .from('enrollments')
+          .select('status')
+          .eq('user_id', userId)
+          .eq('course_id', dbCourseId)
+          .in('status', ['active', 'completed'])
+          .maybeSingle(),
+      )
+      if (!enrollment) {
+        return null
+      }
+
       const course = await must(
         client
           .from('courses')
@@ -2881,6 +3066,24 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
               )
               .single(),
           )
+
+      await must(
+        client
+          .from('learner_exercise_attempt_history')
+          .insert({
+            id: crypto.randomUUID(),
+            user_id: userId,
+            course_id: dbCourseId,
+            course_version_id: courseVersionId,
+            lesson_id: lessonId,
+            exercise_id: exerciseId,
+            answers: clone(answers),
+            is_correct: isCorrect,
+            attempted_at: nowIso(),
+          })
+          .select('id')
+          .single(),
+      )
 
       return mapLearnerAttemptRow(saved)
     },

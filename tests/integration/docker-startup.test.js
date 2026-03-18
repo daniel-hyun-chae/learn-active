@@ -18,7 +18,7 @@ test('docker compose startup', () => {
   assert.ok(compose.includes('4100:4100'))
   assert.ok(compose.includes('4000:4000'))
   assert.ok(compose.includes('DATABASE_URL'))
-  assert.ok(compose.includes('host.docker.internal:54322'))
+  assert.ok(compose.includes('host.docker.internal:15422'))
   assert.ok(compose.includes('depends_on'))
   assert.ok(compose.includes('healthcheck'))
 })

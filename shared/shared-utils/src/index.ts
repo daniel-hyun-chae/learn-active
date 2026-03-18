@@ -1,4 +1,7 @@
-export function invariant(condition: unknown, message: string): asserts condition {
+export function invariant(
+  condition: unknown,
+  message: string,
+): asserts condition {
   if (!condition) {
     throw new Error(message)
   }
@@ -10,3 +13,4 @@ export function isNonEmptyString(value: unknown): value is string {
 
 export * from './offline/storage'
 export * from './offline/quizAttemptStore'
+export * from './publishers/courseValidation'

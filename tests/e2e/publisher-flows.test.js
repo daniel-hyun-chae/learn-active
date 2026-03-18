@@ -238,6 +238,46 @@ async function graphqlRequest({
   return payload.data
 }
 
+async function graphqlRequestRaw({
+  token,
+  query,
+  variables,
+  origin = stack.baseUrl,
+}) {
+  const response = await httpRequest(
+    `http://localhost:${stack.apiPort}/graphql`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${token}`,
+        origin,
+      },
+      body: JSON.stringify({ query, variables }),
+    },
+  )
+
+  assert.equal(response.statusCode, 200, response.body)
+  const payload = JSON.parse(response.body)
+
+  return payload
+}
+
+async function graphqlRequestExpectError({
+  token,
+  query,
+  variables,
+  origin = stack.baseUrl,
+}) {
+  const payload = await graphqlRequestRaw({ token, query, variables, origin })
+  assert.equal(
+    Array.isArray(payload.errors),
+    true,
+    'expected GraphQL errors but none were returned',
+  )
+  return payload.errors
+}
+
 function futureCardExpiry() {
   const now = new Date()
   const month = String(((now.getMonth() + 1) % 12) + 1).padStart(2, '0')
@@ -1977,5 +2017,372 @@ test(
       await context.close()
       await browser.close()
     }
+  },
+)
+
+test(
+  'learner progression submission and enrollment gating behave correctly',
+  { timeout: 180000 },
+  async () => {
+    const publisherToken = extractAccessTokenFromStorageState(
+      stack.authStoragePath,
+    )
+
+    const enrolledUnique = `${Date.now().toString(36)}-progress-enrolled`
+    const unenrolledUnique = `${Date.now().toString(36)}-progress-unenrolled`
+
+    const enrolledStoragePath = path.join(
+      stack.authStorageDir,
+      `learner-${enrolledUnique}-storage-state.json`,
+    )
+    const unenrolledStoragePath = path.join(
+      stack.authStorageDir,
+      `learner-${unenrolledUnique}-storage-state.json`,
+    )
+
+    await createAuthStorageState({
+      chromium,
+      baseUrl: stack.baseUrl,
+      storageStatePath: enrolledStoragePath,
+      email: `learner-${enrolledUnique}@example.test`,
+      returnToPath: '/learn',
+      waitForTestId: 'auth-user-email',
+      waitForTestIdTimeoutMs: 90000,
+    })
+
+    await createAuthStorageState({
+      chromium,
+      baseUrl: stack.baseUrl,
+      storageStatePath: unenrolledStoragePath,
+      email: `learner-${unenrolledUnique}@example.test`,
+      returnToPath: '/learn',
+      waitForTestId: 'auth-user-email',
+      waitForTestIdTimeoutMs: 90000,
+    })
+
+    const enrolledToken =
+      extractAccessTokenFromStorageState(enrolledStoragePath)
+    const unenrolledToken = extractAccessTokenFromStorageState(
+      unenrolledStoragePath,
+    )
+
+    const seedCourseId = 'course-german-b1-alltagskommunikation'
+
+    const enrolledCourseBefore = await graphqlRequest({
+      token: enrolledToken,
+      query: `query LearnerCourseBefore($id: String!) {
+        learnerCourse(id: $id) {
+          id
+          versionId
+          modules {
+            id
+            lessons {
+              id
+              exercises {
+                id
+                type
+                fillInBlank {
+                  steps {
+                    blanks {
+                      id
+                      correct
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }`,
+      variables: { id: seedCourseId },
+    })
+
+    assert.equal(
+      enrolledCourseBefore.learnerCourse,
+      null,
+      'unenrolled learner should not access learnerCourse before enrollment',
+    )
+
+    const unenrolledErrors = await graphqlRequestExpectError({
+      token: unenrolledToken,
+      query: `mutation UpsertAttemptWithoutEnrollment($input: LearnerExerciseAttemptInput!) {
+        upsertLearnerExerciseAttempt(input: $input) {
+          id
+        }
+      }`,
+      variables: {
+        input: {
+          courseId: seedCourseId,
+          courseVersionId: '00000000-0000-0000-0000-000000000000',
+          lessonId: 'lesson-b1-alltag-einstieg',
+          exerciseId: 'exercise-b1-einkauf-fib',
+          answers: [{ key: 'blank-b1-einkauf-fib-1', value: 'mit' }],
+        },
+      },
+    })
+
+    assert.equal(
+      unenrolledErrors.some((error) =>
+        String(error.message ?? '').includes(
+          'Course is not available to this learner.',
+        ),
+      ),
+      true,
+      JSON.stringify(unenrolledErrors),
+    )
+
+    await graphqlRequest({
+      token: enrolledToken,
+      query: `mutation EnrollInSeed($courseId: String!) {
+        enrollInCourse(courseId: $courseId) {
+          id
+        }
+      }`,
+      variables: { courseId: seedCourseId },
+    })
+
+    const enrolledCourse = await graphqlRequest({
+      token: enrolledToken,
+      query: `query LearnerCourseAfter($id: String!) {
+        learnerCourse(id: $id) {
+          id
+          versionId
+          modules {
+            id
+            lessons {
+              id
+              exercises {
+                id
+                type
+                fillInBlank {
+                  steps {
+                    blanks {
+                      id
+                      correct
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }`,
+      variables: { id: seedCourseId },
+    })
+
+    assert.ok(enrolledCourse.learnerCourse)
+
+    const firstLessonWithExercise = enrolledCourse.learnerCourse.modules
+      .flatMap((module) => module.lessons)
+      .find((lesson) => lesson.id === 'lesson-b1-terminplanung')
+    assert.ok(firstLessonWithExercise, 'seed lesson should be available')
+
+    const fillExercise = firstLessonWithExercise.exercises.find(
+      (exercise) => exercise.id === 'exercise-b1-termin-fib-1',
+    )
+    assert.ok(
+      fillExercise,
+      'seed course should have fill-in-the-blank exercise',
+    )
+
+    const multipleChoiceExercise = firstLessonWithExercise.exercises.find(
+      (exercise) => exercise.id === 'exercise-b1-termin-mc-1',
+    )
+    assert.ok(
+      multipleChoiceExercise,
+      'seed course should have the reported multiple-choice exercise',
+    )
+
+    const answers = {}
+    for (const step of fillExercise.fillInBlank.steps) {
+      for (const blank of step.blanks) {
+        answers[blank.id] = blank.correct
+      }
+    }
+
+    const submit = await graphqlRequest({
+      token: enrolledToken,
+      query: `mutation UpsertAttempt($input: LearnerExerciseAttemptInput!) {
+        upsertLearnerExerciseAttempt(input: $input) {
+          id
+          isCorrect
+        }
+      }`,
+      variables: {
+        input: {
+          courseId: seedCourseId,
+          courseVersionId: enrolledCourse.learnerCourse.versionId,
+          lessonId: firstLessonWithExercise.id,
+          exerciseId: fillExercise.id,
+          answers: Object.entries(answers).map(([key, value]) => ({
+            key,
+            value,
+          })),
+        },
+      },
+    })
+
+    assert.equal(submit.upsertLearnerExerciseAttempt.isCorrect, true)
+
+    const submitMc = await graphqlRequest({
+      token: enrolledToken,
+      query: `mutation UpsertAttempt($input: LearnerExerciseAttemptInput!) {
+        upsertLearnerExerciseAttempt(input: $input) {
+          id
+          isCorrect
+        }
+      }`,
+      variables: {
+        input: {
+          courseId: seedCourseId,
+          courseVersionId: enrolledCourse.learnerCourse.versionId,
+          lessonId: firstLessonWithExercise.id,
+          exerciseId: multipleChoiceExercise.id,
+          answers: [{ key: 'choice-b1-termin-mc-1', value: 'true' }],
+        },
+      },
+    })
+
+    assert.equal(submitMc.upsertLearnerExerciseAttempt.isCorrect, true)
+
+    const progress = await graphqlRequest({
+      token: enrolledToken,
+      query: `query LearnerProgress($courseId: String!) {
+        learnerCourseProgress(courseId: $courseId) {
+          completedExercises
+          totalExercises
+          modules {
+            lessons {
+              lessonId
+              completedExercises
+              totalExercises
+              exerciseAttempts {
+                exerciseId
+                attempted
+                isCorrect
+              }
+            }
+          }
+        }
+      }`,
+      variables: { courseId: seedCourseId },
+    })
+
+    assert.ok(progress.learnerCourseProgress)
+    assert.equal(
+      progress.learnerCourseProgress.completedExercises > 0,
+      true,
+      'completed exercises should increase after successful submission',
+    )
+
+    const lessonAttemptEntry = progress.learnerCourseProgress.modules
+      .flatMap((module) => module.lessons)
+      .find((lesson) => lesson.lessonId === firstLessonWithExercise.id)
+      ?.exerciseAttempts.find((entry) => entry.exerciseId === fillExercise.id)
+
+    assert.ok(lessonAttemptEntry)
+    assert.equal(lessonAttemptEntry.attempted, true)
+    assert.equal(lessonAttemptEntry.isCorrect, true)
+
+    const mcAttemptEntry = progress.learnerCourseProgress.modules
+      .flatMap((module) => module.lessons)
+      .find((lesson) => lesson.lessonId === firstLessonWithExercise.id)
+      ?.exerciseAttempts.find(
+        (entry) => entry.exerciseId === multipleChoiceExercise.id,
+      )
+
+    assert.ok(mcAttemptEntry)
+    assert.equal(mcAttemptEntry.attempted, true)
+    assert.equal(mcAttemptEntry.isCorrect, true)
+
+    const lessonProgressEntry = progress.learnerCourseProgress.modules
+      .flatMap((module) => module.lessons)
+      .find((lesson) => lesson.lessonId === firstLessonWithExercise.id)
+
+    assert.ok(lessonProgressEntry)
+    assert.equal(
+      lessonProgressEntry.completedExercises >= 2,
+      true,
+      'lesson progress should include both reported submitted exercises',
+    )
+    assert.equal(
+      lessonProgressEntry.totalExercises >= 3,
+      true,
+      'reported lesson should expose expected total exercise count',
+    )
+
+    const history = await graphqlRequest({
+      token: enrolledToken,
+      query: `query AttemptHistory(
+        $courseId: String!
+        $courseVersionId: String!
+        $lessonId: String!
+        $exerciseId: String!
+      ) {
+        learnerExerciseAttemptHistory(
+          courseId: $courseId
+          courseVersionId: $courseVersionId
+          lessonId: $lessonId
+          exerciseId: $exerciseId
+        ) {
+          id
+          isCorrect
+          answers {
+            key
+            value
+          }
+        }
+      }`,
+      variables: {
+        courseId: seedCourseId,
+        courseVersionId: enrolledCourse.learnerCourse.versionId,
+        lessonId: firstLessonWithExercise.id,
+        exerciseId: fillExercise.id,
+      },
+    })
+
+    assert.equal(
+      history.learnerExerciseAttemptHistory.length >= 1,
+      true,
+      'attempt history should include at least one recorded submission',
+    )
+
+    const latest =
+      history.learnerExerciseAttemptHistory[
+        history.learnerExerciseAttemptHistory.length - 1
+      ]
+    assert.equal(latest.isCorrect, true)
+
+    const mcHistory = await graphqlRequest({
+      token: enrolledToken,
+      query: `query AttemptHistory(
+        $courseId: String!
+        $courseVersionId: String!
+        $lessonId: String!
+        $exerciseId: String!
+      ) {
+        learnerExerciseAttemptHistory(
+          courseId: $courseId
+          courseVersionId: $courseVersionId
+          lessonId: $lessonId
+          exerciseId: $exerciseId
+        ) {
+          id
+          isCorrect
+        }
+      }`,
+      variables: {
+        courseId: seedCourseId,
+        courseVersionId: enrolledCourse.learnerCourse.versionId,
+        lessonId: firstLessonWithExercise.id,
+        exerciseId: multipleChoiceExercise.id,
+      },
+    })
+
+    assert.equal(
+      mcHistory.learnerExerciseAttemptHistory.length >= 1,
+      true,
+      'multiple-choice attempt history should be recorded',
+    )
   },
 )

@@ -133,6 +133,12 @@ export const resources = {
       'learners.exercise.optionsLabel': 'Choose the correct word',
       'learners.exercise.typingHint': 'Type the missing word(s) above.',
       'learners.exercise.fillAll': 'Fill in all blanks to continue.',
+      'learners.exercise.submitting': 'Submitting...',
+      'learners.exercise.submitError':
+        'Could not submit your answer. Please try again.',
+      'learners.exercise.feedbackCorrect': 'Correct answer.',
+      'learners.exercise.feedbackIncorrect':
+        'Not quite right. Review and try again.',
       'learners.exercise.inputAria': 'Answer for blank {{blank}}',
       'learners.exercise.blankPlaceholder': 'Select',
       'learners.exercise.multipleChoice.selectOne':
@@ -285,6 +291,37 @@ export const resources = {
       'publishers.course.notFoundTitle': 'Course not found',
       'publishers.course.notFoundBody':
         'This course does not exist or may have been removed.',
+      'publishers.exercise.untitled': 'Untitled exercise',
+      'publishers.validation.title': 'Validation summary',
+      'publishers.validation.counts':
+        'Errors: {{errors}}. Warnings: {{warnings}}.',
+      'publishers.validation.errorsTitle': 'Publish-blocking errors',
+      'publishers.validation.warningsTitle': 'Warnings',
+      'publishers.validation.publishBlocked':
+        'Cannot publish while validation errors remain. Resolve errors and try again.',
+      'publishers.validation.location.course': 'Course draft',
+      'publishers.validation.location.module': 'Module {{order}} "{{title}}"',
+      'publishers.validation.location.lesson': 'Lesson {{order}} "{{title}}"',
+      'publishers.validation.location.exercise':
+        'Exercise {{order}} "{{title}}"',
+      'publishers.validation.issue.MODULE_HAS_NO_LESSONS':
+        '{{location}} has no lessons.',
+      'publishers.validation.issue.LESSON_TITLE_EMPTY':
+        '{{location}} is missing a lesson title.',
+      'publishers.validation.issue.LESSON_HAS_NO_CONTENT_PAGES':
+        '{{location}} has no content pages.',
+      'publishers.validation.issue.FILL_STEP_HAS_NO_BLANKS':
+        '{{location}} has a fill-in-the-blank step without blanks.',
+      'publishers.validation.issue.FILL_BLANK_CORRECT_EMPTY':
+        '{{location}} has a blank without a correct answer.',
+      'publishers.validation.issue.FILL_OPTIONS_TOO_FEW':
+        '{{location}} has an options blank with fewer than two options.',
+      'publishers.validation.issue.FILL_OPTIONS_MISSING_CORRECT':
+        '{{location}} has an options blank where choices do not include the correct answer.',
+      'publishers.validation.issue.MULTIPLE_CHOICE_HAS_NO_CHOICES':
+        '{{location}} has no answer choices.',
+      'publishers.validation.issue.MULTIPLE_CHOICE_NO_CORRECT_CHOICE':
+        '{{location}} has no correct choice selected.',
       'mobile.learners.title': 'Learn offline, keep in sync',
       'mobile.learners.subtitle':
         'Pick up lessons and answer quizzes anywhere.',

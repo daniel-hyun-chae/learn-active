@@ -14,6 +14,12 @@ This repository is pnpm-based and requires lockfile parity with the repository-d
 - Regenerate lockfile with the repository-declared pnpm major (via Corepack) whenever dependencies or lockfile metadata change.
 - Local validation for AI-driven changes must run the same parity check enforced in CI before marking work complete.
 
+## Seed Content Governance (Product)
+
+- Local and staging environments must always have idempotent sample course seed content available for manual validation.
+- Seed content must be realistic and cover all currently supported learner/publisher content and exercise capabilities.
+- Whenever a new learner/publisher capability is introduced (new block type, exercise type, or major behavior mode), seed content and related integration checks must be updated in the same change.
+
 ## Implementation Gate (Product)
 
 Before marking work complete, confirm:

@@ -20,6 +20,9 @@ test('course versioning, catalog, enrollment, and checkout wiring', () => {
   const resolver = read('apps/api/src/features/course/resolver.ts')
   const repository = read('apps/api/src/features/course/repository.ts')
   const repositoryDb = read('apps/api/src/features/course/repository-db.ts')
+  const publisherValidation = read(
+    'apps/api/src/features/course/publisher-validation.ts',
+  )
   const services = read('apps/api/src/runtime/services.ts')
   const devStack = read('scripts/dev-stack.mjs')
   const smoke = read('scripts/smoke-local.mjs')
@@ -68,6 +71,8 @@ test('course versioning, catalog, enrollment, and checkout wiring', () => {
   assert.ok(resolver.includes('async myCourses'))
   assert.ok(resolver.includes('async enrollInCourse('))
   assert.ok(resolver.includes('async publishCourseDraft('))
+  assert.ok(resolver.includes('validatePublisherCourse'))
+  assert.ok(resolver.includes('Publish blocked by validation errors.'))
   assert.ok(resolver.includes('async createDraftFromPublished('))
   assert.ok(resolver.includes('async restoreVersionAsDraft('))
   assert.ok(resolver.includes('async courseVersionHistory('))
@@ -89,6 +94,9 @@ test('course versioning, catalog, enrollment, and checkout wiring', () => {
   assert.ok(repositoryDb.includes('createNodePostgresCourseRepository'))
   assert.ok(repositoryDb.includes('createWorkerSupabaseCourseRepositoryImpl'))
   assert.ok(repositoryDb.includes('public.provision_personal_owner'))
+  assert.ok(publisherValidation.includes('FILL_BLANK_CORRECT_EMPTY'))
+  assert.ok(publisherValidation.includes('MULTIPLE_CHOICE_NO_CORRECT_CHOICE'))
+  assert.ok(publisherValidation.includes('LESSON_HAS_NO_CONTENT_PAGES'))
 
   assert.ok(services.includes('DATABASE_URL is required'))
   assert.ok(

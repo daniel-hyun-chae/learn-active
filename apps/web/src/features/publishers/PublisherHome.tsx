@@ -3,6 +3,10 @@ import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { tokenVars } from '@app/shared-tokens'
 import { PrimaryButton, Surface } from '@app/shared-ui'
+import {
+  validatePublisherCourse,
+  type PublisherValidationIssue,
+} from '@app/shared-utils'
 import { fetchGraphQL } from '../../shared/api/graphql'
 import type {
   ContentDraft,
@@ -123,6 +127,43 @@ type Selection =
     }
 
 type PanelKey = 'structure' | 'designer' | 'preview'
+
+function validationLocation(
+  issue: PublisherValidationIssue,
+  t: (key: string, options?: Record<string, unknown>) => string,
+) {
+  if (issue.path.exerciseOrder) {
+    return t('publishers.validation.location.exercise', {
+      order: issue.path.exerciseOrder,
+      title:
+        issue.path.exerciseTitle?.trim() || t('publishers.exercise.untitled'),
+    })
+  }
+
+  if (issue.path.lessonOrder) {
+    return t('publishers.validation.location.lesson', {
+      order: issue.path.lessonOrder,
+      title: issue.path.lessonTitle?.trim() || t('publishers.lessons.untitled'),
+    })
+  }
+
+  if (issue.path.moduleOrder) {
+    return t('publishers.validation.location.module', {
+      order: issue.path.moduleOrder,
+      title: issue.path.moduleTitle?.trim() || t('publishers.modules.untitled'),
+    })
+  }
+
+  return t('publishers.validation.location.course')
+}
+
+function formatValidationIssue(
+  issue: PublisherValidationIssue,
+  t: (key: string, options?: Record<string, unknown>) => string,
+) {
+  const location = validationLocation(issue, t)
+  return t(`publishers.validation.issue.${issue.code}`, { location })
+}
 
 function toLearnerExercise(exercise: ExerciseDraft): Exercise {
   if (exercise.type === 'MULTIPLE_CHOICE') {
@@ -421,6 +462,12 @@ export function PublisherHome({ course }: PublisherHomeProps) {
     return t('publishers.selection.exercise')
   }, [selection, t])
 
+  const validation = useMemo(
+    () => validatePublisherCourse({ modules: draft.modules }),
+    [draft.modules],
+  )
+  const hasValidationErrors = validation.hasErrors
+
   const layoutClassName = useMemo(() => {
     const classes = ['publisher-layout', 'publisher-layout-parallel']
     if (collapsedPanels.structure) {
@@ -577,6 +624,13 @@ export function PublisherHome({ course }: PublisherHomeProps) {
   async function handlePublishDraft() {
     if (!draft.id) {
       setStatus({ type: 'error', message: t('publishers.status.errorGeneric') })
+      return
+    }
+    if (hasValidationErrors) {
+      setStatus({
+        type: 'error',
+        message: t('publishers.validation.publishBlocked'),
+      })
       return
     }
     setStatus({ type: 'saving' })
@@ -2285,6 +2339,7 @@ export function PublisherHome({ course }: PublisherHomeProps) {
             onClick={handlePublishDraft}
             aria-label={t('publishers.actions.publish')}
             data-test="publisher-publish"
+            disabled={hasValidationErrors}
           >
             {t('publishers.actions.publish')}
           </PrimaryButton>
@@ -2327,6 +2382,56 @@ export function PublisherHome({ course }: PublisherHomeProps) {
         >
           {status.message}
         </p>
+      ) : null}
+
+      {validation.issues.length > 0 ? (
+        <Surface
+          className="publisher-section"
+          data-test="publisher-validation-summary"
+        >
+          <h3>{t('publishers.validation.title')}</h3>
+          <p className="muted" data-test="publisher-validation-counts">
+            {t('publishers.validation.counts', {
+              errors: validation.errors.length,
+              warnings: validation.warnings.length,
+            })}
+          </p>
+
+          {validation.errors.length > 0 ? (
+            <div
+              className="publisher-section"
+              data-test="publisher-validation-errors"
+            >
+              <h4>{t('publishers.validation.errorsTitle')}</h4>
+              <ul>
+                {validation.errors.map((issue, index) => (
+                  <li
+                    key={`error-${issue.code}-${index}`}
+                    className="status-error"
+                  >
+                    {formatValidationIssue(issue, t)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {validation.warnings.length > 0 ? (
+            <div
+              className="publisher-section"
+              data-test="publisher-validation-warnings"
+            >
+              <h4>{t('publishers.validation.warningsTitle')}</h4>
+              <ul>
+                {validation.warnings.map((issue, index) => (
+                  <li key={`warning-${issue.code}-${index}`} className="muted">
+                    {formatValidationIssue(issue, t)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </Surface>
       ) : null}
 
       {historyVisible ? (
