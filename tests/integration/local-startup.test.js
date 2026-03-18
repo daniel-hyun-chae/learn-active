@@ -107,6 +107,7 @@ test('dev command orchestrates setup and stack', () => {
   assert.ok(devStack.includes('STRIPE_SECRET_KEY:'))
   assert.ok(devStack.includes('STRIPE_PUBLISHABLE_KEY:'))
   assert.ok(devStack.includes('STRIPE_WEBHOOK_SECRET:'))
+  assert.ok(devStack.includes('VITE_GRAPHQL_FORWARD_PORT'))
   assert.ok(devStack.includes('webAppDir'))
   assert.ok(devStack.includes('stylesheet'))
   assert.ok(!devStack.includes('db:migrate'))
@@ -143,7 +144,7 @@ test('devcontainer db helper workflow', () => {
   assert.ok(setupLocal.includes('switching host to host.docker.internal'))
   assert.ok(
     compose.includes(
-      'DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:54322/postgres',
+      'DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:15422/postgres',
     ),
   )
   assert.ok(!compose.includes('\n  postgres:\n'))

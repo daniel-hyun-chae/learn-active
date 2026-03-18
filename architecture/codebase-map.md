@@ -60,14 +60,14 @@ Expo React Native app for learners. Offline-first with local quiz attempt storag
 
 All under `shared/`. Each is a separate package consumed by one or more apps.
 
-| Package                  | Purpose                                                                                       |
-| ------------------------ | --------------------------------------------------------------------------------------------- |
-| `shared/shared-i18n/`    | Internationalization with react-i18next; English translation keys for all user-facing strings |
-| `shared/shared-graphql/` | GraphQL client setup, generated types, QuizAttemptDraft types                                 |
-| `shared/shared-utils/`   | Quiz attempt offline store, storage abstractions                                              |
-| `shared/shared-tokens/`  | Design tokens (JS and CSS exports)                                                            |
-| `shared/shared-config/`  | Application configuration constants                                                           |
-| `shared/shared-ui/`      | Shared UI components used across web and mobile                                               |
+| Package                  | Purpose                                                                                                     |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `shared/shared-i18n/`    | Internationalization with react-i18next; English translation keys for all user-facing strings               |
+| `shared/shared-graphql/` | GraphQL client setup, generated types, QuizAttemptDraft types                                               |
+| `shared/shared-utils/`   | Cross-app utilities including offline attempt store, storage abstractions, and publisher validation helpers |
+| `shared/shared-tokens/`  | Design tokens (JS and CSS exports)                                                                          |
+| `shared/shared-config/`  | Application configuration constants                                                                         |
+| `shared/shared-ui/`      | Shared UI components used across web and mobile                                                             |
 
 ## Database
 

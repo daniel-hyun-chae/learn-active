@@ -27,7 +27,7 @@ Status drives folder location:
 
 - Items use `BG-NNN` IDs for stable reference.
 - Each item lives in its own file: `BG-NNN-short-slug.md`.
-- Next available ID: `BG-023`.
+- Next available ID: `BG-027`.
 - Priority tiers:
   - `P0` -- Foundation or blocker. Must be done before other work builds on it.
   - `P1` -- Next capability. Important for proving the core learning loop.
@@ -137,26 +137,30 @@ When implementation starts, the change-orchestrator appends these sections to th
 
 ### P0 -- Foundation
 
-| ID     | Title                                    | Status |
-| ------ | ---------------------------------------- | ------ |
-| BG-001 | Wire repository to real Postgres         | Done   |
-| BG-002 | Personal ownership hardening             | Done   |
-| BG-003 | Publisher-learner query boundary cleanup | Done   |
+| ID     | Title                                                       | Status |
+| ------ | ----------------------------------------------------------- | ------ |
+| BG-001 | Wire repository to real Postgres                            | Done   |
+| BG-002 | Personal ownership hardening                                | Done   |
+| BG-003 | Publisher-learner query boundary cleanup                    | Done   |
+| BG-023 | Devcontainer port-forward stability for local Supabase auth | Done   |
+| BG-024 | Realistic B1 seed content and seed governance               | Done   |
 
 ### P1 -- Next Capabilities
 
-| ID     | Title                                    | Status |
-| ------ | ---------------------------------------- | ------ |
-| BG-004 | Learner attempt and progress persistence | Done   |
-| BG-005 | Exercise type abstraction                | Done   |
-| BG-006 | Multiple-choice exercise end-to-end      | Done   |
-| BG-007 | Wrong-answer review queue                | Done   |
+| ID     | Title                                      | Status |
+| ------ | ------------------------------------------ | ------ |
+| BG-004 | Learner attempt and progress persistence   | Done   |
+| BG-005 | Exercise type abstraction                  | Done   |
+| BG-006 | Multiple-choice exercise end-to-end        | Done   |
+| BG-007 | Wrong-answer review queue                  | Done   |
+| BG-025 | Learner attempt and progression hardening  | Done   |
+| BG-026 | Lesson exercise feedback and progress sync | Done   |
 
 ### P2 -- After Foundation
 
 | ID     | Title                          | Status   |
 | ------ | ------------------------------ | -------- |
-| BG-008 | Publisher validation UX        | Proposed |
+| BG-008 | Publisher validation UX        | Done     |
 | BG-009 | Offline attempt sync           | Proposed |
 | BG-010 | Reordering exercise end-to-end | Proposed |
 

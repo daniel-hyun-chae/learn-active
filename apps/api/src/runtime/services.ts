@@ -43,6 +43,7 @@ export async function createRuntimeServices(
     }
 
     const courseRepository = createNodeCourseRepository(db)
+    await courseRepository.ensureSystemSeedCourse()
 
     return {
       env,
@@ -58,12 +59,15 @@ export async function createRuntimeServices(
     )
   }
 
+  const courseRepository = createWorkerSupabaseCourseRepository({
+    supabaseUrl: env.supabaseUrl,
+    serviceRoleKey: env.supabaseServiceRoleKey,
+  })
+  await courseRepository.ensureSystemSeedCourse()
+
   return {
     env,
-    courseRepository: createWorkerSupabaseCourseRepository({
-      supabaseUrl: env.supabaseUrl,
-      serviceRoleKey: env.supabaseServiceRoleKey,
-    }),
+    courseRepository,
     stripe: createRuntimeStripeService(env),
     generateId,
   }

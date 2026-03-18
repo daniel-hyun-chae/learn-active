@@ -21,6 +21,7 @@ export type CourseWriteRow = {
 }
 
 export type CourseRepository = {
+  ensureSystemSeedCourse: () => Promise<void>
   provisionPersonalOwner: (args: {
     userId: string
     email: string | null

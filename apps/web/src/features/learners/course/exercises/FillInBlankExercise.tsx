@@ -14,7 +14,7 @@ type FillInBlankExerciseProps = {
   onSubmitAttempt?: (args: {
     exerciseId: string
     answers: Record<string, string>
-  }) => Promise<void> | void
+  }) => Promise<{ isCorrect: boolean } | void> | { isCorrect: boolean } | void
 }
 
 type StepAnswers = Record<string, string>
@@ -59,6 +59,12 @@ export function FillInBlankExercise({
     Record<string, StepAnswers>
   >({})
   const [activeBlankId, setActiveBlankId] = useState<string | null>(null)
+  const [submitted, setSubmitted] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [submissionCorrect, setSubmissionCorrect] = useState<boolean | null>(
+    null,
+  )
+  const [submissionError, setSubmissionError] = useState<string | null>(null)
 
   const currentStep = steps[currentIndex]
   const currentAnswers = answersByStep[currentStep.id] ?? {}
@@ -88,6 +94,9 @@ export function FillInBlankExercise({
   }, [currentStep])
 
   function setAnswer(blankId: string, value: string) {
+    setSubmitted(false)
+    setSubmissionCorrect(null)
+    setSubmissionError(null)
     setAnswersByStep((previous: Record<string, StepAnswers>) => ({
       ...previous,
       [currentStep.id]: {
@@ -116,9 +125,13 @@ export function FillInBlankExercise({
     }
   }
 
-  function handleContinue() {
+  async function handleContinue() {
     if (currentIndex < steps.length - 1) {
       setCurrentIndex((index: number) => index + 1)
+      return
+    }
+
+    if (submitting) {
       return
     }
 
@@ -129,10 +142,25 @@ export function FillInBlankExercise({
       }
       return acc
     }, {})
-    void onSubmitAttempt?.({
-      exerciseId: exercise.id,
-      answers: mergedAnswers,
-    })
+
+    setSubmissionError(null)
+    setSubmitting(true)
+    try {
+      const result = await onSubmitAttempt?.({
+        exerciseId: exercise.id,
+        answers: mergedAnswers,
+      })
+      setSubmitted(true)
+      setSubmissionCorrect(
+        typeof result?.isCorrect === 'boolean' ? result.isCorrect : null,
+      )
+    } catch {
+      setSubmitted(false)
+      setSubmissionCorrect(null)
+      setSubmissionError(t('learners.exercise.submitError'))
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const previousSteps = steps.slice(0, currentIndex)
@@ -267,15 +295,32 @@ export function FillInBlankExercise({
 
         <div className="exercise-actions">
           <PrimaryButton
-            onClick={handleContinue}
+            onClick={() => {
+              void handleContinue()
+            }}
             aria-label={nextStepLabel}
-            disabled={!isComplete}
+            disabled={!isComplete || submitting}
           >
-            {nextStepLabel}
+            {submitting ? t('learners.exercise.submitting') : nextStepLabel}
           </PrimaryButton>
           {!isComplete ? (
             <p className="muted" style={{ marginTop: tokenVars.spacing.sm }}>
               {t('learners.exercise.fillAll')}
+            </p>
+          ) : null}
+          {submissionError ? (
+            <p className="status-error" data-test="fill-in-blank-submit-error">
+              {submissionError}
+            </p>
+          ) : null}
+          {submitted && submissionCorrect === true ? (
+            <p className="status-success" data-test="fill-in-blank-feedback">
+              {t('learners.exercise.feedbackCorrect')}
+            </p>
+          ) : null}
+          {submitted && submissionCorrect === false ? (
+            <p className="status-error" data-test="fill-in-blank-feedback">
+              {t('learners.exercise.feedbackIncorrect')}
             </p>
           ) : null}
         </div>

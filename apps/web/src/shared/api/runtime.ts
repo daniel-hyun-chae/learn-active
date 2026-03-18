@@ -14,6 +14,72 @@ export type SupabaseRuntimeConfig = {
   supabasePublishableKey: string
 }
 
+function normalizeSupabaseUrlForBrowser(rawUrl: string) {
+  if (typeof window === 'undefined') {
+    return rawUrl
+  }
+
+  let parsed: URL
+  try {
+    parsed = new URL(rawUrl)
+  } catch {
+    return rawUrl
+  }
+
+  const localForwardPort = getImportMetaEnvValue('VITE_SUPABASE_FORWARD_PORT')
+  if (!localForwardPort) {
+    return rawUrl
+  }
+
+  const host = parsed.hostname.toLowerCase()
+  const isLoopback =
+    host === '127.0.0.1' ||
+    host === 'localhost' ||
+    host === '::1' ||
+    host === '[::1]'
+
+  if (!isLoopback) {
+    return rawUrl
+  }
+
+  parsed.hostname = window.location.hostname || 'localhost'
+  parsed.port = localForwardPort
+  return parsed.toString()
+}
+
+function normalizeGraphQLEndpointForBrowser(rawUrl: string) {
+  if (typeof window === 'undefined') {
+    return rawUrl
+  }
+
+  let parsed: URL
+  try {
+    parsed = new URL(rawUrl)
+  } catch {
+    return rawUrl
+  }
+
+  const localForwardPort = getImportMetaEnvValue('VITE_GRAPHQL_FORWARD_PORT')
+  if (!localForwardPort) {
+    return rawUrl
+  }
+
+  const host = parsed.hostname.toLowerCase()
+  const isLoopback =
+    host === '127.0.0.1' ||
+    host === 'localhost' ||
+    host === '::1' ||
+    host === '[::1]'
+
+  if (!isLoopback) {
+    return rawUrl
+  }
+
+  parsed.hostname = window.location.hostname || 'localhost'
+  parsed.port = localForwardPort
+  return parsed.toString()
+}
+
 export type WebRuntimeConfig = {
   theme: string
   graphqlEndpoint: string
@@ -97,16 +163,16 @@ export function getRuntimeEndpoint() {
   if (typeof globalThis !== 'undefined') {
     const runtimeEndpoint = getRuntime().__GRAPHQL_ENDPOINT__
     if (runtimeEndpoint) {
-      return runtimeEndpoint
+      return normalizeGraphQLEndpointForBrowser(runtimeEndpoint)
     }
   }
 
   const fallbackEnv = getImportMetaEnvValue('VITE_GRAPHQL_ENDPOINT')
   if (fallbackEnv) {
-    return fallbackEnv
+    return normalizeGraphQLEndpointForBrowser(fallbackEnv)
   }
 
-  return appConfig.graphqlEndpoint
+  return normalizeGraphQLEndpointForBrowser(appConfig.graphqlEndpoint)
 }
 
 export function getSupabaseRuntimeConfig(): SupabaseRuntimeConfig | null {
@@ -124,7 +190,7 @@ export function getSupabaseRuntimeConfig(): SupabaseRuntimeConfig | null {
   }
 
   return {
-    supabaseUrl,
+    supabaseUrl: normalizeSupabaseUrlForBrowser(supabaseUrl),
     supabasePublishableKey,
   }
 }

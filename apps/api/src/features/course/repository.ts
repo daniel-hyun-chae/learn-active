@@ -12,6 +12,7 @@ import type {
   PublicCourseRecord,
   PublisherCourseRecord,
 } from './model.js'
+import { isActivelyEnrolled } from './model.js'
 import type { CourseRepository } from './repository-contract.js'
 import {
   createNodePostgresCourseRepository,
@@ -378,6 +379,10 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
   }
 
   return {
+    async ensureSystemSeedCourse() {
+      return
+    },
+
     provisionPersonalOwner,
 
     async listPublicCourses() {
@@ -554,7 +559,12 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
         .filter((row): row is PublisherCourseRecord => Boolean(row))
     },
 
-    async getLearnerCourseById({ id }) {
+    async getLearnerCourseById({ userId, id }) {
+      const enrollment = state.enrollments.get(`${userId}:${id}`)
+      if (!enrollment || !isActivelyEnrolled(enrollment.status)) {
+        return null
+      }
+
       const course = state.courses.get(id)
       if (!course) {
         return null
@@ -604,12 +614,11 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
     },
 
     async getLearnerCourseProgress({ userId, courseId }) {
-      const course = state.courses.get(courseId)
-      if (!course) {
-        return null
-      }
-      const published = publishedForCourse(courseId)
-      if (!published) {
+      const learnerCourse = await this.getLearnerCourseById({
+        userId,
+        id: courseId,
+      })
+      if (!learnerCourse) {
         return null
       }
 
@@ -617,13 +626,13 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
         (attempt) =>
           attempt.userId === userId &&
           attempt.courseId === courseId &&
-          attempt.courseVersionId === published.id,
+          attempt.courseVersionId === learnerCourse.versionId,
       )
 
       return buildCourseProgressFromContent({
         courseId,
-        courseVersionId: published.id,
-        content: published.content,
+        courseVersionId: learnerCourse.versionId,
+        content: learnerCourse.content,
         attempts,
       })
     },

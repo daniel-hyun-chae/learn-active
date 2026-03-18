@@ -18,7 +18,7 @@ type LessonViewProps = {
   onSubmitAttempt?: (args: {
     exerciseId: string
     answers: Record<string, string>
-  }) => Promise<void> | void
+  }) => Promise<{ isCorrect: boolean } | void> | { isCorrect: boolean } | void
 }
 
 function renderContentBlocks(contents: ContentBlock[], testId: string) {

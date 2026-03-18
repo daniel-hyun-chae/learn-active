@@ -8,7 +8,7 @@ type MultipleChoiceExerciseProps = {
   onSubmitAttempt?: (args: {
     exerciseId: string
     answers: Record<string, string>
-  }) => Promise<void> | void
+  }) => Promise<{ isCorrect: boolean } | void> | { isCorrect: boolean } | void
 }
 
 export function MultipleChoiceExercise({
@@ -18,6 +18,11 @@ export function MultipleChoiceExercise({
   const { t } = useTranslation()
   const [selectedChoiceIds, setSelectedChoiceIds] = useState<string[]>([])
   const [submitted, setSubmitted] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [submissionError, setSubmissionError] = useState<string | null>(null)
+  const [submissionCorrect, setSubmissionCorrect] = useState<boolean | null>(
+    null,
+  )
 
   const multipleChoice = exercise.multipleChoice
   const choices = useMemo(
@@ -38,10 +43,7 @@ export function MultipleChoiceExercise({
     [choices],
   )
 
-  const isCorrect = useMemo(() => {
-    if (!submitted) {
-      return false
-    }
+  const isSelectionCorrect = useMemo(() => {
     if (selectedSet.size !== correctSet.size) {
       return false
     }
@@ -51,10 +53,12 @@ export function MultipleChoiceExercise({
       }
     }
     return true
-  }, [submitted, selectedSet, correctSet])
+  }, [selectedSet, correctSet])
 
   function toggleChoice(choiceId: string) {
     setSubmitted(false)
+    setSubmissionError(null)
+    setSubmissionCorrect(null)
     if (isMulti) {
       setSelectedChoiceIds((previous) =>
         previous.includes(choiceId)
@@ -67,6 +71,38 @@ export function MultipleChoiceExercise({
     setSelectedChoiceIds((previous) =>
       previous[0] === choiceId ? [] : [choiceId],
     )
+  }
+
+  async function handleSubmit() {
+    if (selectedChoiceIds.length === 0 || submitting) {
+      return
+    }
+
+    setSubmitted(false)
+    setSubmissionError(null)
+    setSubmissionCorrect(null)
+    setSubmitting(true)
+    const answerPayload = Object.fromEntries(
+      selectedChoiceIds.map((choiceId) => [choiceId, 'true']),
+    )
+
+    try {
+      const result = await onSubmitAttempt?.({
+        exerciseId: exercise.id,
+        answers: answerPayload,
+      })
+      setSubmitted(true)
+      setSubmissionCorrect(
+        typeof result?.isCorrect === 'boolean'
+          ? result.isCorrect
+          : isSelectionCorrect,
+      )
+    } catch {
+      setSubmitted(false)
+      setSubmissionError(t('learners.exercise.submitError'))
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -104,28 +140,29 @@ export function MultipleChoiceExercise({
       <div className="exercise-actions">
         <PrimaryButton
           onClick={() => {
-            setSubmitted(true)
-            const answerPayload = Object.fromEntries(
-              selectedChoiceIds.map((choiceId) => [choiceId, 'true']),
-            )
-            void onSubmitAttempt?.({
-              exerciseId: exercise.id,
-              answers: answerPayload,
-            })
+            void handleSubmit()
           }}
-          disabled={selectedChoiceIds.length === 0}
+          disabled={selectedChoiceIds.length === 0 || submitting}
           aria-label={t('learners.exercise.multipleChoice.submit')}
         >
-          {t('learners.exercise.multipleChoice.submit')}
+          {submitting
+            ? t('learners.exercise.submitting')
+            : t('learners.exercise.multipleChoice.submit')}
         </PrimaryButton>
       </div>
 
-      {submitted ? (
+      {submissionError ? (
+        <p className="status-error" data-test="multiple-choice-submit-error">
+          {submissionError}
+        </p>
+      ) : null}
+
+      {submitted && !submissionError && submissionCorrect !== null ? (
         <p
-          className={isCorrect ? 'status-success' : 'status-error'}
+          className={submissionCorrect ? 'status-success' : 'status-error'}
           data-test="multiple-choice-feedback"
         >
-          {isCorrect
+          {submissionCorrect
             ? t('learners.exercise.multipleChoice.correct')
             : t('learners.exercise.multipleChoice.incorrect')}
         </p>

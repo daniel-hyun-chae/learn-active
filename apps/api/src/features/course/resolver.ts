@@ -26,12 +26,17 @@ import {
   mapPublisherCourseToCourse,
   normalizeCourseInput,
 } from './model.js'
+import {
+  formatPublisherValidationIssue,
+  validatePublisherCourse,
+} from './publisher-validation.js'
 
 const COURSE_EDIT_FORBIDDEN_MESSAGE =
   'Course is not editable by current publisher.'
 
 const DEFAULT_WEB_ORIGIN = 'http://localhost:3000'
 const STRIPE_MIN_EUR_PRICE_CENTS = 50
+const PUBLISH_VALIDATION_ERROR_LIMIT = 3
 
 function normalizeAnswer(value: string | undefined) {
   return (value ?? '').trim().toLowerCase()
@@ -477,6 +482,34 @@ export class CourseResolver {
     @Ctx() ctx: GraphQLContext,
   ) {
     const user = requireAuthenticatedUser(ctx)
+
+    const draft = await ctx.services.courseRepository.getPublisherCourseById({
+      userId: user.id,
+      email: user.email,
+      id: courseId,
+    })
+
+    if (draft) {
+      const draftCourse = mapPublisherCourseToCourse(draft)
+      const validation = validatePublisherCourse({
+        modules: draftCourse.modules,
+      })
+
+      if (validation.hasErrors) {
+        const topErrors = validation.errors
+          .slice(0, PUBLISH_VALIDATION_ERROR_LIMIT)
+          .map((issue) => formatPublisherValidationIssue(issue))
+        const additionalCount = validation.errors.length - topErrors.length
+        const moreText =
+          additionalCount > 0 ? ` (+${additionalCount} more)` : ''
+
+        throw new GraphQLError(
+          `Publish blocked by validation errors. ${topErrors.join(' ')}${moreText}`,
+          { extensions: { code: 'BAD_USER_INPUT' } },
+        )
+      }
+    }
+
     try {
       const published = await ctx.services.courseRepository.publishCourseDraft({
         userId: user.id,

@@ -115,6 +115,7 @@ export const Route = createFileRoute('/courses/$courseId/lessons/$lessonId')({
     const data = await fetchGraphQL<CourseLessonQueryData>(
       `query CourseLesson($id: String!) {
         learnerCourse(id: $id) {
+          versionId
           modules {
             id
             title
@@ -325,13 +326,16 @@ function LessonRoute() {
     answers: Record<string, string>
   }) {
     if (!courseVersionId) {
-      return
+      throw new Error(t('learners.exercise.submitError'))
     }
 
-    await fetchGraphQL(
+    const response = await fetchGraphQL<{
+      upsertLearnerExerciseAttempt: { id: string; isCorrect: boolean }
+    }>(
       `mutation UpsertLearnerAttempt($input: LearnerExerciseAttemptInput!) {
         upsertLearnerExerciseAttempt(input: $input) {
           id
+          isCorrect
         }
       }`,
       {
@@ -349,6 +353,8 @@ function LessonRoute() {
     )
 
     await router.invalidate()
+
+    return { isCorrect: response.upsertLearnerExerciseAttempt.isCorrect }
   }
 
   async function openAttemptHistory(args: {

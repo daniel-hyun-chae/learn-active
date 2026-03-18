@@ -46,6 +46,7 @@ Learners complete fill-in-the-blank exercises with typing and options.
 - Both typing and options variants are supported.
 - Options are clickable and fill the active blank.
 - Progress continues only when all blanks are filled.
+- Final-step submission shows correctness feedback after learner answers are saved.
 - Exercise flow supports web and mobile inputs.
 
 ## Discriminated exercise rendering with multiple-choice
@@ -59,6 +60,7 @@ Learner web and mobile render exercises via type-dispatched components and suppo
 - Multiple-choice rendering is available in both web and mobile lesson flows.
 - Multiple-choice supports single-select and multi-select based on allowsMultiple.
 - Learner UI provides immediate local correctness feedback for multiple-choice selections.
+- Multiple-choice submission synchronizes with backend attempt persistence so lesson/course progress and attempt history reflect submitted answers.
 
 ## Public catalog and enrollment
 
@@ -126,10 +128,13 @@ Learner attempts are stored server-side against the active published course vers
 ### Behaviors
 
 - Submitting a learner exercise attempt persists answers and correctness for the current learner and course version.
+- If attempt submission fails, learner sees actionable submission error feedback and no silent success state.
 - Lesson view displays progress as completed exercises out of total exercises for the selected lesson.
 - Course structure displays module-level completion percent and per-exercise attempt status.
 - Learner home course cards display course-level completed exercises out of total exercises.
 - Learner attempt records are scoped to a specific course version and keep stable exercise references.
+- Learner course detail and learner attempt/progress operations require active enrollment for the authenticated learner.
+- Each learner attempt submission appends a history entry while also updating latest-attempt status used by progress summaries.
 
 ## Wrong-answer review mode and attempt timeline
 

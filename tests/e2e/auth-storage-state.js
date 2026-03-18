@@ -79,7 +79,7 @@ async function waitForMailpitMessage(email, timeoutMs = 90000) {
   const start = Date.now()
 
   while (Date.now() - start < timeoutMs) {
-    const response = await httpRequest('http://127.0.0.1:54324/api/v1/messages')
+    const response = await httpRequest('http://127.0.0.1:15424/api/v1/messages')
     if (response.statusCode < 200 || response.statusCode >= 300) {
       await new Promise((resolve) => setTimeout(resolve, 1000))
       continue
@@ -112,7 +112,7 @@ function extractUrl(text) {
 
 async function extractMagicLink(messageId) {
   const response = await httpRequest(
-    `http://127.0.0.1:54324/api/v1/message/${messageId}`,
+    `http://127.0.0.1:15424/api/v1/message/${messageId}`,
   )
   if (response.statusCode < 200 || response.statusCode >= 300) {
     throw new Error(`Unable to load Mailpit message details for ${messageId}`)
@@ -152,7 +152,7 @@ async function createAuthStorageState({
   const page = await context.newPage()
 
   try {
-    await waitFor('http://127.0.0.1:54324/api/v1/messages', {}, 60000)
+    await waitFor('http://127.0.0.1:15424/api/v1/messages', {}, 60000)
 
     const authUrl = new URL('/auth', baseUrl)
     authUrl.searchParams.set('returnTo', returnToPath)

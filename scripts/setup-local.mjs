@@ -3,7 +3,7 @@ import net from 'node:net'
 import { spawn } from 'node:child_process'
 
 const defaultDatabaseUrl =
-  'postgresql://postgres:postgres@localhost:54322/postgres'
+  'postgresql://postgres:postgres@localhost:15422/postgres'
 
 function parseDatabaseTarget(connectionString) {
   try {
