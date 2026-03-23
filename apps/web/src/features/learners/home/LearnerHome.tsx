@@ -10,10 +10,25 @@ type CourseSummary = {
   versionId: string
   title: string
   description: string
+  resumePosition?: {
+    courseId: string
+    lessonId: string
+    block: 'summary' | 'contentPage' | 'exercise'
+    contentPageId: string | null
+    exerciseId: string | null
+    visitedAt: string
+  } | null
   modules: Array<{
     id: string
     lessons: Array<{ id: string }>
   }>
+}
+
+type CatalogCourseSummary = {
+  id: string
+  slug: string
+  title: string
+  description: string
 }
 
 type CourseProgressByCourseId = Record<string, CourseProgress>
@@ -32,16 +47,147 @@ function createAttemptId() {
 type LearnerHomeProps = {
   apiHealth: string
   courses: CourseSummary[]
+  catalogCourses?: CatalogCourseSummary[]
   progressByCourseId?: CourseProgressByCourseId
+}
+
+function formatRelativeAccessTime(
+  value: string,
+  locale: string,
+  t: (key: string, options?: Record<string, unknown>) => string,
+) {
+  const accessed = new Date(value)
+  if (Number.isNaN(accessed.getTime())) {
+    return t('learners.resume.lastAccessedUnknown')
+  }
+
+  const diffMs = Date.now() - accessed.getTime()
+  const diffMinutes = Math.max(1, Math.round(diffMs / 60000))
+  const safeLocale = (() => {
+    try {
+      return Intl.getCanonicalLocales(locale)[0] ?? 'en'
+    } catch {
+      return 'en'
+    }
+  })()
+
+  const rtf = (() => {
+    try {
+      return new Intl.RelativeTimeFormat(safeLocale, { numeric: 'auto' })
+    } catch {
+      return new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
+    }
+  })()
+
+  if (diffMinutes < 60) {
+    return t('learners.resume.lastAccessed', {
+      value: rtf.format(-diffMinutes, 'minute'),
+    })
+  }
+
+  const diffHours = Math.round(diffMinutes / 60)
+  if (diffHours < 24) {
+    return t('learners.resume.lastAccessed', {
+      value: rtf.format(-diffHours, 'hour'),
+    })
+  }
+
+  const diffDays = Math.round(diffHours / 24)
+  return t('learners.resume.lastAccessed', {
+    value: rtf.format(-diffDays, 'day'),
+  })
+}
+
+function buildResumePath(course: CourseSummary) {
+  const position = course.resumePosition
+  if (!position?.lessonId) {
+    return null
+  }
+
+  return {
+    to: '/courses/$courseId/lessons/$lessonId' as const,
+    params: {
+      courseId: course.id,
+      lessonId: position.lessonId,
+    },
+    search: {
+      block: position.block,
+      contentPageId:
+        position.block === 'contentPage'
+          ? (position.contentPageId ?? undefined)
+          : undefined,
+      exerciseId:
+        position.block === 'exercise'
+          ? (position.exerciseId ?? undefined)
+          : undefined,
+    },
+  }
+}
+
+function buildDefaultCoursePath(course: CourseSummary) {
+  const firstModule = course.modules[0]
+  const firstLesson = firstModule?.lessons[0]
+  if (!firstLesson) {
+    return null
+  }
+
+  return {
+    to: '/courses/$courseId/lessons/$lessonId' as const,
+    params: {
+      courseId: course.id,
+      lessonId: firstLesson.id,
+    },
+    search: {
+      block: 'summary' as const,
+    },
+  }
 }
 
 export function LearnerHome({
   apiHealth,
   courses,
+  catalogCourses = [],
   progressByCourseId = {},
 }: LearnerHomeProps) {
   const { t } = useTranslation()
   const [status, setStatus] = useState<string>('')
+
+  const enrolledCourses = [...courses].sort((a, b) => {
+    const aTime = a.resumePosition?.visitedAt
+    const bTime = b.resumePosition?.visitedAt
+    if (aTime && bTime) {
+      return bTime.localeCompare(aTime)
+    }
+    if (aTime) {
+      return -1
+    }
+    if (bTime) {
+      return 1
+    }
+    return a.title.localeCompare(b.title)
+  })
+
+  const continueCourse = enrolledCourses[0] ?? null
+  const continuePath = continueCourse ? buildResumePath(continueCourse) : null
+  const continueFallbackPath = continueCourse
+    ? buildDefaultCoursePath(continueCourse)
+    : null
+  const continueFinalPath = continuePath ?? continueFallbackPath
+  const secondaryEnrolledCourses = continueFinalPath
+    ? enrolledCourses.filter((course) => course.id !== continueCourse?.id)
+    : enrolledCourses
+
+  const continueProgress = continueCourse
+    ? progressByCourseId[continueCourse.id]
+    : undefined
+  const continueProgressLabel = continueProgress
+    ? t('learners.progress.courseSummary', {
+        completed: continueProgress.completedExercises,
+        total: continueProgress.totalExercises,
+      })
+    : null
+
+  const locale = globalThis.navigator?.language ?? 'en'
 
   const handleStartQuiz = async () => {
     const attemptId = createAttemptId()
@@ -65,24 +211,72 @@ export function LearnerHome({
             <p className="muted">{t('learners.courses.subtitle')}</p>
           </div>
         </div>
+
+        {continueCourse && continueFinalPath ? (
+          <Surface>
+            <div className="course-card" data-test="continue-learning-card">
+              <div>
+                <p className="muted">{t('learners.resume.primaryLabel')}</p>
+                <h3 style={{ marginTop: tokenVars.spacing.none }}>
+                  {continueCourse.title}
+                </h3>
+                {continueProgressLabel ? (
+                  <p className="muted" data-test="continue-learning-progress">
+                    {continueProgressLabel}
+                  </p>
+                ) : null}
+                {continueCourse.resumePosition?.visitedAt ? (
+                  <p
+                    className="muted"
+                    data-test="continue-learning-last-access"
+                  >
+                    {formatRelativeAccessTime(
+                      continueCourse.resumePosition.visitedAt,
+                      locale,
+                      t,
+                    )}
+                  </p>
+                ) : null}
+              </div>
+              <Link
+                to={continueFinalPath.to}
+                params={continueFinalPath.params}
+                search={continueFinalPath.search}
+                className="course-link"
+                data-test="continue-learning-link"
+                aria-label={t('learners.resume.cta')}
+              >
+                {t('learners.resume.cta')}
+              </Link>
+            </div>
+          </Surface>
+        ) : null}
+
         <div className="course-grid">
-          {courses.length === 0 ? (
+          {enrolledCourses.length === 0 ? (
             <Surface>
-              <p className="muted">{t('learners.courses.empty')}</p>
+              <p className="muted">{t('learners.resume.noEnrollments')}</p>
+              <Link to="/courses" className="course-link">
+                {t('learners.resume.browseCatalog')}
+              </Link>
             </Surface>
           ) : null}
-          {courses.map((course) => {
-            const firstModule = course.modules[0]
-            const firstLesson = firstModule?.lessons[0]
-            const lessonPath = firstLesson
-              ? `/courses/${course.id}/lessons/${firstLesson.id}`
-              : undefined
+          {secondaryEnrolledCourses.map((course) => {
+            const resumePath = buildResumePath(course)
+            const lessonPath = resumePath ?? buildDefaultCoursePath(course)
             const progress = progressByCourseId[course.id]
             const progressLabel = progress
               ? t('learners.progress.courseSummary', {
                   completed: progress.completedExercises,
                   total: progress.totalExercises,
                 })
+              : null
+            const lastAccessLabel = course.resumePosition?.visitedAt
+              ? formatRelativeAccessTime(
+                  course.resumePosition.visitedAt,
+                  locale,
+                  t,
+                )
               : null
 
             return (
@@ -98,10 +292,17 @@ export function LearnerHome({
                         {progressLabel}
                       </p>
                     ) : null}
+                    {lastAccessLabel ? (
+                      <p className="muted" data-test="course-card-last-access">
+                        {lastAccessLabel}
+                      </p>
+                    ) : null}
                   </div>
                   {lessonPath ? (
                     <Link
-                      to={lessonPath}
+                      to={lessonPath.to}
+                      params={lessonPath.params}
+                      search={lessonPath.search}
                       className="course-link"
                       aria-label={t('learners.courses.start')}
                     >
@@ -113,6 +314,32 @@ export function LearnerHome({
             )
           })}
         </div>
+
+        {continueCourse && secondaryEnrolledCourses.length > 0 ? (
+          <p className="muted" data-test="continue-learning-secondary-label">
+            {t('learners.resume.otherCourses')}
+          </p>
+        ) : null}
+
+        {enrolledCourses.length === 0 && catalogCourses.length > 0 ? (
+          <div className="course-grid" data-test="catalog-fallback-grid">
+            {catalogCourses.map((course) => (
+              <Surface key={course.id}>
+                <div className="course-card">
+                  <div>
+                    <h3 style={{ marginTop: tokenVars.spacing.none }}>
+                      {course.title}
+                    </h3>
+                    <p className="muted">{course.description}</p>
+                  </div>
+                  <Link to={`/courses/${course.slug}`} className="course-link">
+                    {t('catalog.open')}
+                  </Link>
+                </div>
+              </Surface>
+            ))}
+          </div>
+        ) : null}
       </div>
       <div className="hero">
         <div>

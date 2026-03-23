@@ -7,6 +7,7 @@ const expectedTests = [
   'publisher landing and block authoring flow',
   'paid course publication and enrollment flow',
   'paid course enrollment also succeeds for async Stripe success webhook',
+  'learner continue card opens saved resume exercise target',
   'real Stripe hosted checkout updates purchase success UI to enrolled',
   'learner progression submission and enrollment gating behave correctly',
 ]

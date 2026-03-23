@@ -115,6 +115,30 @@ export class MultipleChoiceExerciseContentInput {
 }
 
 @InputType()
+export class ReorderingItemInput {
+  @Field(() => ID, { nullable: true })
+  id?: string
+
+  @Field(() => Int, { nullable: true })
+  order?: number
+
+  @Field(() => String)
+  text!: string
+
+  @Field(() => Boolean, { nullable: true })
+  isDistractor?: boolean
+}
+
+@InputType()
+export class ReorderingExerciseContentInput {
+  @Field(() => String)
+  prompt!: string
+
+  @Field(() => [ReorderingItemInput])
+  items!: ReorderingItemInput[]
+}
+
+@InputType()
 export class ExerciseInput {
   @Field(() => ID, { nullable: true })
   id?: string
@@ -133,6 +157,9 @@ export class ExerciseInput {
 
   @Field(() => MultipleChoiceExerciseContentInput, { nullable: true })
   multipleChoice?: MultipleChoiceExerciseContentInput
+
+  @Field(() => ReorderingExerciseContentInput, { nullable: true })
+  reordering?: ReorderingExerciseContentInput
 }
 
 @InputType()
@@ -203,8 +230,41 @@ export class CourseInput {
   @Field(() => String, { nullable: true })
   currency?: string
 
+  @Field(() => [String], { nullable: true })
+  categoryIds?: string[]
+
+  @Field(() => [String], { nullable: true })
+  tags?: string[]
+
+  @Field(() => String, { nullable: true })
+  languageCode?: string
+
+  @Field(() => String, { nullable: true })
+  previewLessonId?: string
+
   @Field(() => [ModuleInput])
   modules!: ModuleInput[]
+}
+
+@InputType()
+export class PublicCatalogQueryInput {
+  @Field(() => String, { nullable: true })
+  search?: string
+
+  @Field(() => [String], { nullable: true })
+  categoryIds?: string[]
+
+  @Field(() => String, { nullable: true })
+  priceFilter?: 'all' | 'free' | 'paid'
+
+  @Field(() => [String], { nullable: true })
+  languageCodes?: string[]
+
+  @Field(() => String, { nullable: true })
+  sort?: 'popular' | 'title'
+
+  @Field(() => Int, { nullable: true })
+  limit?: number
 }
 
 @InputType()
@@ -232,4 +292,22 @@ export class LearnerExerciseAttemptInput {
 
   @Field(() => [AttemptAnswerInput])
   answers!: AttemptAnswerInput[]
+}
+
+@InputType()
+export class LearnerResumePositionInput {
+  @Field(() => String)
+  courseId!: string
+
+  @Field(() => String)
+  lessonId!: string
+
+  @Field(() => String)
+  block!: string
+
+  @Field(() => String, { nullable: true })
+  contentPageId?: string
+
+  @Field(() => String, { nullable: true })
+  exerciseId?: string
 }

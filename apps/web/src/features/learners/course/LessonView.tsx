@@ -5,6 +5,7 @@ import { Surface } from '@app/shared-ui'
 import type { ContentBlock, Lesson } from './types'
 import { FillInBlankExercise } from './exercises/FillInBlankExercise'
 import { MultipleChoiceExercise } from './exercises/MultipleChoiceExercise'
+import { ReorderingExercise } from './exercises/ReorderingExercise'
 
 export type LessonViewSelection =
   | { type: 'summary' }
@@ -102,6 +103,16 @@ export function LessonView({
               selectedExercise as Extract<
                 Lesson['exercises'][number],
                 { type: 'MULTIPLE_CHOICE' }
+              >
+            }
+            onSubmitAttempt={onSubmitAttempt}
+          />
+        ) : selectedExercise.type === 'REORDERING' ? (
+          <ReorderingExercise
+            exercise={
+              selectedExercise as Extract<
+                Lesson['exercises'][number],
+                { type: 'REORDERING' }
               >
             }
             onSubmitAttempt={onSubmitAttempt}

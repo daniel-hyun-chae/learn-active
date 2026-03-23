@@ -19,7 +19,11 @@ import type {
   PublisherCourseRecord,
 } from './model.js'
 import { seedCourseRow } from './seed.js'
-import type { CourseRepository } from './repository-contract.js'
+import type {
+  CourseRepository,
+  PublicPreviewLessonRecord,
+  PublicCatalogQuery,
+} from './repository-contract.js'
 
 type NodeDb = NonNullable<Awaited<ReturnType<typeof createNodeDb>>>
 
@@ -30,6 +34,10 @@ type DbCourseIdentity = {
   price_cents: number | null
   currency: string
   stripe_price_id: string | null
+  category_ids?: string[] | null
+  tags?: string[] | null
+  language_code?: string | null
+  preview_lesson_id?: string | null
 }
 
 type DbCourseVersion = {
@@ -54,6 +62,10 @@ type PublisherJoinedRow = {
   price_cents: number | null
   currency: string
   stripe_price_id: string | null
+  category_ids?: string[] | null
+  tags?: string[] | null
+  language_code?: string | null
+  preview_lesson_id?: string | null
   version_id: string
   version: number
   status: 'draft' | 'published' | 'archived'
@@ -65,6 +77,11 @@ type PublisherJoinedRow = {
   created_by: string
   published_at: string | Date | null
   archived_at: string | Date | null
+  last_visited_lesson_id?: string | null
+  last_visited_block?: 'summary' | 'contentPage' | 'exercise' | null
+  last_visited_content_page_id?: string | null
+  last_visited_exercise_id?: string | null
+  last_visited_at?: string | Date | null
 }
 
 type PublicJoinedRow = {
@@ -75,7 +92,14 @@ type PublicJoinedRow = {
   price_cents: number | null
   currency: string
   stripe_price_id: string | null
+  category_ids?: string[] | null
+  tags?: string[] | null
+  language_code?: string | null
+  preview_lesson_id?: string | null
+  enrollment_count?: number | null
+  popularity_score?: number | null
   owner_display_name: string | null
+  content?: unknown
 }
 
 const SYSTEM_PROFILE_USER_ID = '00000000-0000-0000-0000-000000000001'
@@ -149,6 +173,18 @@ function normalizeContent(value: unknown): {
 }
 
 function mapPublisherJoinedRow(row: PublisherJoinedRow): PublisherCourseRecord {
+  const resumePosition =
+    row.last_visited_at && row.last_visited_lesson_id && row.last_visited_block
+      ? {
+          courseId: row.course_id,
+          lessonId: row.last_visited_lesson_id,
+          block: row.last_visited_block,
+          contentPageId: row.last_visited_content_page_id ?? null,
+          exerciseId: row.last_visited_exercise_id ?? null,
+          visitedAt: toIso(row.last_visited_at) ?? nowIso(),
+        }
+      : null
+
   return {
     courseId: row.course_id,
     slug: row.slug,
@@ -156,6 +192,10 @@ function mapPublisherJoinedRow(row: PublisherJoinedRow): PublisherCourseRecord {
     priceCents: row.price_cents,
     currency: row.currency,
     stripePriceId: row.stripe_price_id,
+    categoryIds: row.category_ids ?? [],
+    tags: row.tags ?? [],
+    languageCode: row.language_code ?? 'en',
+    previewLessonId: row.preview_lesson_id ?? null,
     versionId: row.version_id,
     version: row.version,
     status: row.status,
@@ -167,6 +207,7 @@ function mapPublisherJoinedRow(row: PublisherJoinedRow): PublisherCourseRecord {
     createdBy: row.created_by,
     publishedAt: toIso(row.published_at),
     archivedAt: toIso(row.archived_at),
+    resumePosition,
   }
 }
 
@@ -175,12 +216,22 @@ function mapEnrollmentRow(row: {
   course_id: string
   status: string
   enrolled_at: string | Date
+  last_visited_lesson_id: string | null
+  last_visited_block: 'summary' | 'contentPage' | 'exercise' | null
+  last_visited_content_page_id: string | null
+  last_visited_exercise_id: string | null
+  last_visited_at: string | Date | null
 }): EnrollmentRecord {
   return {
     id: row.id,
     courseId: row.course_id,
     status: row.status,
     enrolledAt: toIso(row.enrolled_at) ?? nowIso(),
+    lastVisitedLessonId: row.last_visited_lesson_id ?? null,
+    lastVisitedBlock: row.last_visited_block ?? null,
+    lastVisitedContentPageId: row.last_visited_content_page_id ?? null,
+    lastVisitedExerciseId: row.last_visited_exercise_id ?? null,
+    lastVisitedAt: toIso(row.last_visited_at),
   }
 }
 
@@ -564,14 +615,22 @@ async function ensureNodeSeedCourse(db: NodeDb) {
         slug,
         price_cents,
         currency,
-        stripe_price_id
+        stripe_price_id,
+        category_ids,
+        tags,
+        language_code,
+        preview_lesson_id
       ) values (
         ${seedCourseId}::uuid,
         ${ownerId}::uuid,
         ${slug},
         null,
         'eur',
-        null
+        null,
+        ${seedCourseRow.categoryIds}::text[],
+        ${seedCourseRow.tags}::text[],
+        ${seedCourseRow.languageCode},
+        ${seedCourseRow.previewLessonId}
       )
     `,
   )
@@ -670,7 +729,11 @@ export function createNodePostgresCourseRepository(
           slug,
           price_cents,
           currency,
-          stripe_price_id
+          stripe_price_id,
+          category_ids,
+          tags,
+          language_code,
+          preview_lesson_id
         from public.courses
         where id = ${dbCourseId}::uuid
           and owner_id = ${ownerId}::uuid
@@ -777,7 +840,7 @@ export function createNodePostgresCourseRepository(
 
     provisionPersonalOwner,
 
-    async listPublicCourses() {
+    async listPublicCourses(query) {
       await ensureSeed()
       const rows = await nodeRows<PublicJoinedRow>(
         db,
@@ -790,27 +853,33 @@ export function createNodePostgresCourseRepository(
             c.price_cents,
             c.currency,
             c.stripe_price_id,
+            c.category_ids,
+            c.tags,
+            c.language_code,
+            c.preview_lesson_id,
+            coalesce(enrollment_stats.enrollment_count, 0)::int as enrollment_count,
+            coalesce(enrollment_stats.enrollment_count, 0)::int as popularity_score,
+            v.content,
             p.display_name as owner_display_name
           from public.courses c
           join public.course_publications cp on cp.course_id = c.id
           join public.course_versions v on v.id = cp.published_version_id
+          left join lateral (
+            select count(*)::int as enrollment_count
+            from public.enrollments e
+            where e.course_id = c.id
+              and e.status in ('active', 'completed')
+          ) enrollment_stats on true
           left join public.owners o on o.id = c.owner_id
           left join public.profiles p on p.user_id = o.personal_user_id
-          order by v.title asc
+          order by coalesce(enrollment_stats.enrollment_count, 0) desc, v.title asc
         `,
       )
 
-      return rows.map((row) => ({
-        id: row.id,
-        slug: row.slug,
-        title: row.title,
-        description: row.description,
-        priceCents: row.price_cents,
-        currency: row.currency,
-        stripePriceId: row.stripe_price_id,
-        isPaid: typeof row.price_cents === 'number' && row.price_cents > 0,
-        ownerDisplayName: row.owner_display_name ?? undefined,
-      }))
+      return applyPublicCatalogQuery(
+        rows.map((row) => mapPublicJoinedToRecord(row)),
+        query,
+      )
     },
 
     async getPublicCourseById(id) {
@@ -828,10 +897,23 @@ export function createNodePostgresCourseRepository(
             c.price_cents,
             c.currency,
             c.stripe_price_id,
+            c.category_ids,
+            c.tags,
+            c.language_code,
+            c.preview_lesson_id,
+            coalesce(enrollment_stats.enrollment_count, 0)::int as enrollment_count,
+            coalesce(enrollment_stats.enrollment_count, 0)::int as popularity_score,
+            v.content,
             p.display_name as owner_display_name
           from public.courses c
           join public.course_publications cp on cp.course_id = c.id
           join public.course_versions v on v.id = cp.published_version_id
+          left join lateral (
+            select count(*)::int as enrollment_count
+            from public.enrollments e
+            where e.course_id = c.id
+              and e.status in ('active', 'completed')
+          ) enrollment_stats on true
           left join public.owners o on o.id = c.owner_id
           left join public.profiles p on p.user_id = o.personal_user_id
           where c.id = ${dbCourseId}::uuid
@@ -843,17 +925,7 @@ export function createNodePostgresCourseRepository(
       if (!row) {
         return null
       }
-      return {
-        id: row.id,
-        slug: row.slug,
-        title: row.title,
-        description: row.description,
-        priceCents: row.price_cents,
-        currency: row.currency,
-        stripePriceId: row.stripe_price_id,
-        isPaid: typeof row.price_cents === 'number' && row.price_cents > 0,
-        ownerDisplayName: row.owner_display_name ?? undefined,
-      }
+      return mapPublicJoinedToRecord(row)
     },
 
     async getPublicCourseBySlug(slug) {
@@ -870,10 +942,23 @@ export function createNodePostgresCourseRepository(
             c.price_cents,
             c.currency,
             c.stripe_price_id,
+            c.category_ids,
+            c.tags,
+            c.language_code,
+            c.preview_lesson_id,
+            coalesce(enrollment_stats.enrollment_count, 0)::int as enrollment_count,
+            coalesce(enrollment_stats.enrollment_count, 0)::int as popularity_score,
+            v.content,
             p.display_name as owner_display_name
           from public.courses c
           join public.course_publications cp on cp.course_id = c.id
           join public.course_versions v on v.id = cp.published_version_id
+          left join lateral (
+            select count(*)::int as enrollment_count
+            from public.enrollments e
+            where e.course_id = c.id
+              and e.status in ('active', 'completed')
+          ) enrollment_stats on true
           left join public.owners o on o.id = c.owner_id
           left join public.profiles p on p.user_id = o.personal_user_id
           where c.slug = ${slug}
@@ -887,15 +972,24 @@ export function createNodePostgresCourseRepository(
       }
 
       return {
-        id: row.id,
-        slug: row.slug,
-        title: row.title,
-        description: row.description,
-        priceCents: row.price_cents,
-        currency: row.currency,
-        stripePriceId: row.stripe_price_id,
-        isPaid: typeof row.price_cents === 'number' && row.price_cents > 0,
-        ownerDisplayName: row.owner_display_name ?? undefined,
+        ...mapPublicJoinedToRecord(row),
+      }
+    },
+
+    async getPublicPreviewLessonBySlug(slug) {
+      const publicCourse = await this.getPublicCourseBySlug(slug)
+      if (!publicCourse) {
+        return null
+      }
+
+      const lesson = findPreviewLesson(publicCourse)
+      if (!lesson) {
+        return null
+      }
+
+      return {
+        course: publicCourse,
+        lesson,
       }
     },
 
@@ -908,6 +1002,11 @@ export function createNodePostgresCourseRepository(
         course_id: string
         status: string
         enrolled_at: string | Date
+        last_visited_lesson_id: string | null
+        last_visited_block: 'summary' | 'contentPage' | 'exercise' | null
+        last_visited_content_page_id: string | null
+        last_visited_exercise_id: string | null
+        last_visited_at: string | Date | null
       }>(
         db,
         sql`
@@ -915,7 +1014,12 @@ export function createNodePostgresCourseRepository(
             id::text as id,
             course_id::text as course_id,
             status,
-            enrolled_at
+            enrolled_at,
+            last_visited_lesson_id,
+            last_visited_block,
+            last_visited_content_page_id,
+            last_visited_exercise_id,
+            last_visited_at
           from public.enrollments
           where user_id = ${userId}::uuid
             and course_id = ${dbCourseId}::uuid
@@ -950,6 +1054,11 @@ export function createNodePostgresCourseRepository(
         course_id: string
         status: string
         enrolled_at: string | Date
+        last_visited_lesson_id: string | null
+        last_visited_block: 'summary' | 'contentPage' | 'exercise' | null
+        last_visited_content_page_id: string | null
+        last_visited_exercise_id: string | null
+        last_visited_at: string | Date | null
       }>(
         db,
         sql`
@@ -970,7 +1079,12 @@ export function createNodePostgresCourseRepository(
             id::text as id,
             course_id::text as course_id,
             status,
-            enrolled_at
+            enrolled_at,
+            last_visited_lesson_id,
+            last_visited_block,
+            last_visited_content_page_id,
+            last_visited_exercise_id,
+            last_visited_at
         `,
       )
 
@@ -1141,7 +1255,7 @@ export function createNodePostgresCourseRepository(
           join public.course_publications cp on cp.course_id = c.id
           join public.course_versions v on v.id = cp.published_version_id
           where e.user_id = ${userId}::uuid
-          order by e.enrolled_at desc
+          order by coalesce(e.last_visited_at, e.enrolled_at) desc
         `,
       )
 
@@ -1169,6 +1283,10 @@ export function createNodePostgresCourseRepository(
             c.price_cents,
             c.currency,
             c.stripe_price_id,
+            c.category_ids,
+            c.tags,
+            c.language_code,
+            c.preview_lesson_id,
             v.id::text as version_id,
             v.version,
             v.status,
@@ -1179,13 +1297,19 @@ export function createNodePostgresCourseRepository(
             v.created_at,
             v.created_by::text as created_by,
             v.published_at,
-            v.archived_at
+            v.archived_at,
+            e.last_visited_lesson_id,
+            e.last_visited_block,
+            e.last_visited_content_page_id,
+            e.last_visited_exercise_id,
+            e.last_visited_at
           from public.enrollments e
           join public.courses c on c.id = e.course_id
           join public.course_publications cp on cp.course_id = c.id
           join public.course_versions v on v.id = cp.published_version_id
           where e.user_id = ${userId}::uuid
-          order by e.enrolled_at desc
+            and e.status in ('active', 'completed')
+          order by coalesce(e.last_visited_at, e.enrolled_at) desc
         `,
       )
 
@@ -1206,6 +1330,10 @@ export function createNodePostgresCourseRepository(
             c.price_cents,
             c.currency,
             c.stripe_price_id,
+            c.category_ids,
+            c.tags,
+            c.language_code,
+            c.preview_lesson_id,
             v.id::text as version_id,
             v.version,
             v.status,
@@ -1216,7 +1344,12 @@ export function createNodePostgresCourseRepository(
             v.created_at,
             v.created_by::text as created_by,
             v.published_at,
-            v.archived_at
+            v.archived_at,
+            e.last_visited_lesson_id,
+            e.last_visited_block,
+            e.last_visited_content_page_id,
+            e.last_visited_exercise_id,
+            e.last_visited_at
           from public.enrollments e
           join public.courses c on c.id = e.course_id
           join public.course_publications cp on cp.course_id = c.id
@@ -1229,6 +1362,62 @@ export function createNodePostgresCourseRepository(
       )
       const row = rows[0]
       return row ? mapPublisherJoinedRow(row) : null
+    },
+
+    async upsertLearnerResumePosition({
+      userId,
+      courseId,
+      lessonId,
+      block,
+      contentPageId,
+      exerciseId,
+    }) {
+      assertUuid(userId, 'userId')
+      const dbCourseId = toDbCourseId(courseId)
+
+      const rows = await nodeRows<{
+        course_id: string
+        last_visited_lesson_id: string
+        last_visited_block: 'summary' | 'contentPage' | 'exercise'
+        last_visited_content_page_id: string | null
+        last_visited_exercise_id: string | null
+        last_visited_at: string | Date
+      }>(
+        db,
+        sql`
+          update public.enrollments
+          set
+            last_visited_lesson_id = ${lessonId},
+            last_visited_block = ${block},
+            last_visited_content_page_id = ${block === 'contentPage' ? (contentPageId ?? null) : null},
+            last_visited_exercise_id = ${block === 'exercise' ? (exerciseId ?? null) : null},
+            last_visited_at = timezone('utc', now())
+          where user_id = ${userId}::uuid
+            and course_id = ${dbCourseId}::uuid
+            and status in ('active', 'completed')
+          returning
+            course_id::text as course_id,
+            last_visited_lesson_id,
+            last_visited_block,
+            last_visited_content_page_id,
+            last_visited_exercise_id,
+            last_visited_at
+        `,
+      )
+
+      const row = rows[0]
+      if (!row) {
+        throw new Error('Course is not available to this learner.')
+      }
+
+      return {
+        courseId: row.course_id,
+        lessonId: row.last_visited_lesson_id,
+        block: row.last_visited_block,
+        contentPageId: row.last_visited_content_page_id,
+        exerciseId: row.last_visited_exercise_id,
+        visitedAt: toIso(row.last_visited_at) ?? nowIso(),
+      }
     },
 
     async upsertLearnerExerciseAttempt({
@@ -1450,6 +1639,10 @@ export function createNodePostgresCourseRepository(
             c.price_cents,
             c.currency,
             c.stripe_price_id,
+            c.category_ids,
+            c.tags,
+            c.language_code,
+            c.preview_lesson_id,
             v.id::text as version_id,
             v.version,
             v.status,
@@ -1502,6 +1695,10 @@ export function createNodePostgresCourseRepository(
             c.price_cents,
             c.currency,
             c.stripe_price_id,
+            c.category_ids,
+            c.tags,
+            c.language_code,
+            c.preview_lesson_id,
             v.id::text as version_id,
             v.version,
             v.status,
@@ -1557,14 +1754,22 @@ export function createNodePostgresCourseRepository(
               slug,
               price_cents,
               currency,
-              stripe_price_id
+              stripe_price_id,
+              category_ids,
+              tags,
+              language_code,
+              preview_lesson_id
             ) values (
               ${dbCourseId}::uuid,
               ${ownerId}::uuid,
               ${slug},
               ${row.priceCents},
               ${row.currency},
-              ${row.stripePriceId}
+              ${row.stripePriceId},
+              ${row.categoryIds}::text[],
+              ${row.tags}::text[],
+              ${row.languageCode},
+              ${row.previewLessonId}
             )
           `,
         )
@@ -1604,6 +1809,10 @@ export function createNodePostgresCourseRepository(
               ${row.priceCents}::int as price_cents,
               ${row.currency} as currency,
               ${row.stripePriceId} as stripe_price_id,
+              ${row.categoryIds}::text[] as category_ids,
+              ${row.tags}::text[] as tags,
+              ${row.languageCode} as language_code,
+              ${row.previewLessonId} as preview_lesson_id,
               id::text as version_id,
               version,
               status,
@@ -1634,6 +1843,10 @@ export function createNodePostgresCourseRepository(
             price_cents = ${row.priceCents},
             currency = ${row.currency},
             stripe_price_id = ${row.stripePriceId},
+            category_ids = ${row.categoryIds}::text[],
+            tags = ${row.tags}::text[],
+            language_code = ${row.languageCode},
+            preview_lesson_id = ${row.previewLessonId},
             updated_at = timezone('utc', now())
           where id = ${dbCourseId}::uuid
         `,
@@ -1657,6 +1870,10 @@ export function createNodePostgresCourseRepository(
               ${row.priceCents}::int as price_cents,
               ${row.currency} as currency,
               ${row.stripePriceId} as stripe_price_id,
+              ${row.categoryIds}::text[] as category_ids,
+              ${row.tags}::text[] as tags,
+              ${row.languageCode} as language_code,
+              ${row.previewLessonId} as preview_lesson_id,
               id::text as version_id,
               version,
               status,
@@ -1709,6 +1926,10 @@ export function createNodePostgresCourseRepository(
             ${row.priceCents}::int as price_cents,
             ${row.currency} as currency,
             ${row.stripePriceId} as stripe_price_id,
+            ${row.categoryIds}::text[] as category_ids,
+            ${row.tags}::text[] as tags,
+            ${row.languageCode} as language_code,
+            ${row.previewLessonId} as preview_lesson_id,
             id::text as version_id,
             version,
             status,
@@ -1743,6 +1964,10 @@ export function createNodePostgresCourseRepository(
           price_cents: course.price_cents,
           currency: course.currency,
           stripe_price_id: course.stripe_price_id,
+          category_ids: course.category_ids ?? [],
+          tags: course.tags ?? [],
+          language_code: course.language_code ?? 'en',
+          preview_lesson_id: course.preview_lesson_id ?? null,
           version_id: existingDraft.id,
           version: existingDraft.version,
           status: existingDraft.status,
@@ -1798,6 +2023,10 @@ export function createNodePostgresCourseRepository(
             ${course.price_cents}::int as price_cents,
             ${course.currency} as currency,
             ${course.stripe_price_id} as stripe_price_id,
+            ${course.category_ids ?? []}::text[] as category_ids,
+            ${course.tags ?? []}::text[] as tags,
+            ${course.language_code ?? 'en'} as language_code,
+            ${course.preview_lesson_id ?? null} as preview_lesson_id,
             id::text as version_id,
             version,
             status,
@@ -1866,6 +2095,10 @@ export function createNodePostgresCourseRepository(
             ${course.price_cents}::int as price_cents,
             ${course.currency} as currency,
             ${course.stripe_price_id} as stripe_price_id,
+            ${course.category_ids ?? []}::text[] as category_ids,
+            ${course.tags ?? []}::text[] as tags,
+            ${course.language_code ?? 'en'} as language_code,
+            ${course.preview_lesson_id ?? null} as preview_lesson_id,
             id::text as version_id,
             version,
             status,
@@ -1971,6 +2204,10 @@ export function createNodePostgresCourseRepository(
             ${course.price_cents}::int as price_cents,
             ${course.currency} as currency,
             ${course.stripe_price_id} as stripe_price_id,
+            ${course.category_ids ?? []}::text[] as category_ids,
+            ${course.tags ?? []}::text[] as tags,
+            ${course.language_code ?? 'en'} as language_code,
+            ${course.preview_lesson_id ?? null} as preview_lesson_id,
             id::text as version_id,
             version,
             status,
@@ -2151,6 +2388,18 @@ async function ensureWorkerSeedCourse(client: SupabaseClient) {
   )
 
   if (existing?.id) {
+    await must(
+      client
+        .from('courses')
+        .update({
+          category_ids: seedCourseRow.categoryIds,
+          tags: seedCourseRow.tags,
+          language_code: seedCourseRow.languageCode,
+          preview_lesson_id: seedCourseRow.previewLessonId,
+        })
+        .eq('id', seedCourseId),
+    )
+
     const publication = await must(
       client
         .from('course_publications')
@@ -2284,6 +2533,10 @@ async function ensureWorkerSeedCourse(client: SupabaseClient) {
       price_cents: null,
       currency: 'eur',
       stripe_price_id: null,
+      category_ids: seedCourseRow.categoryIds,
+      tags: seedCourseRow.tags,
+      language_code: seedCourseRow.languageCode,
+      preview_lesson_id: seedCourseRow.previewLessonId,
     }),
   )
 
@@ -2326,8 +2579,92 @@ function mapPublicJoinedToRecord(row: PublicJoinedRow): PublicCourseRecord {
     currency: row.currency,
     stripePriceId: row.stripe_price_id,
     isPaid: typeof row.price_cents === 'number' && row.price_cents > 0,
+    categoryIds: row.category_ids ?? [],
+    tags: row.tags ?? [],
+    languageCode: row.language_code ?? 'en',
+    previewLessonId: row.preview_lesson_id ?? null,
+    enrollmentCount: row.enrollment_count ?? 0,
+    popularityScore: row.popularity_score ?? row.enrollment_count ?? 0,
+    modules: row.content ? normalizeContent(row.content).modules : undefined,
     ownerDisplayName: row.owner_display_name ?? undefined,
   }
+}
+
+function findPreviewLesson(
+  course: PublicCourseRecord,
+): PublicPreviewLessonRecord['lesson'] | null {
+  const previewLessonId = course.previewLessonId
+  if (!previewLessonId) {
+    return null
+  }
+
+  return (
+    (course.modules ?? [])
+      .flatMap((module) => module.lessons)
+      .find((lesson) => lesson.id === previewLessonId) ?? null
+  )
+}
+
+function applyPublicCatalogQuery(
+  rows: PublicCourseRecord[],
+  query?: PublicCatalogQuery,
+) {
+  const search = query?.search?.trim().toLowerCase() ?? ''
+  const categoryIds = new Set(query?.categoryIds ?? [])
+  const languageCodes = new Set(query?.languageCodes ?? [])
+  const priceFilter = query?.priceFilter ?? 'all'
+  const sort = query?.sort ?? 'popular'
+  const limit = query?.limit
+
+  const filtered = rows.filter((row) => {
+    if (
+      search.length > 0 &&
+      !`${row.title} ${row.description}`.toLowerCase().includes(search)
+    ) {
+      return false
+    }
+
+    if (
+      categoryIds.size > 0 &&
+      !(row.categoryIds ?? []).some((categoryId) => categoryIds.has(categoryId))
+    ) {
+      return false
+    }
+
+    if (
+      languageCodes.size > 0 &&
+      !languageCodes.has((row.languageCode ?? 'en').toLowerCase())
+    ) {
+      return false
+    }
+
+    if (priceFilter === 'free' && row.isPaid) {
+      return false
+    }
+    if (priceFilter === 'paid' && !row.isPaid) {
+      return false
+    }
+
+    return true
+  })
+
+  filtered.sort((a, b) => {
+    if (sort === 'title') {
+      return a.title.localeCompare(b.title)
+    }
+
+    const scoreDelta = (b.popularityScore ?? 0) - (a.popularityScore ?? 0)
+    if (scoreDelta !== 0) {
+      return scoreDelta
+    }
+    return a.title.localeCompare(b.title)
+  })
+
+  if (typeof limit === 'number' && Number.isFinite(limit) && limit > 0) {
+    return filtered.slice(0, Math.floor(limit))
+  }
+
+  return filtered
 }
 
 export function createWorkerSupabaseCourseRepositoryImpl(config: {
@@ -2377,7 +2714,9 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
     const data = await must(
       client
         .from('courses')
-        .select('id, owner_id, slug, price_cents, currency, stripe_price_id')
+        .select(
+          'id, owner_id, slug, price_cents, currency, stripe_price_id, category_ids, tags, language_code, preview_lesson_id',
+        )
         .eq('id', dbCourseId)
         .eq('owner_id', ownerId)
         .maybeSingle(),
@@ -2459,18 +2798,63 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
     return slug
   }
 
+  function uniqueValues(values: string[]) {
+    return Array.from(new Set(values.filter((value) => value.length > 0)))
+  }
+
+  function chunkValues(values: string[], size: number) {
+    const chunks: string[][] = []
+    for (let start = 0; start < values.length; start += size) {
+      chunks.push(values.slice(start, start + size))
+    }
+    return chunks
+  }
+
+  async function selectByInChunks<T>(args: {
+    table:
+      | 'course_publications'
+      | 'course_versions'
+      | 'owners'
+      | 'profiles'
+      | 'enrollments'
+    select: string
+    column: 'course_id' | 'id' | 'user_id'
+    values: string[]
+    chunkSize?: number
+  }) {
+    const normalizedValues = uniqueValues(args.values)
+    if (normalizedValues.length === 0) {
+      return [] as T[]
+    }
+
+    const chunkSize = args.chunkSize ?? 100
+    const results: T[] = []
+
+    for (const valueChunk of chunkValues(normalizedValues, chunkSize)) {
+      const rows = await must(
+        client.from(args.table).select(args.select).in(args.column, valueChunk),
+      )
+      results.push(...(rows as T[]))
+    }
+
+    return results
+  }
+
   async function hydratePublicRows(courseRows: DbCourseIdentity[]) {
     if (courseRows.length === 0) {
       return [] as PublicJoinedRow[]
     }
 
     const courseIdList = courseRows.map((row) => row.id)
-    const publications = await must(
-      client
-        .from('course_publications')
-        .select('course_id, published_version_id')
-        .in('course_id', courseIdList),
-    )
+    const publications = await selectByInChunks<{
+      course_id: string
+      published_version_id: string
+    }>({
+      table: 'course_publications',
+      select: 'course_id, published_version_id',
+      column: 'course_id',
+      values: courseIdList,
+    })
     if (publications.length === 0) {
       return [] as PublicJoinedRow[]
     }
@@ -2478,15 +2862,17 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
     const versionIds = publications
       .map((row) => row.published_version_id)
       .filter((value): value is string => typeof value === 'string')
-    const versions =
-      versionIds.length > 0
-        ? await must(
-            client
-              .from('course_versions')
-              .select('id, title, description')
-              .in('id', versionIds),
-          )
-        : []
+    const versions = await selectByInChunks<{
+      id: string
+      title: string
+      description: string
+      content: unknown
+    }>({
+      table: 'course_versions',
+      select: 'id, title, description, content',
+      column: 'id',
+      values: versionIds,
+    })
 
     const ownerIds = Array.from(
       new Set(
@@ -2495,27 +2881,48 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
           .filter((value): value is string => typeof value === 'string'),
       ),
     )
-    const owners =
-      ownerIds.length > 0
-        ? await must(
-            client
-              .from('owners')
-              .select('id, personal_user_id')
-              .in('id', ownerIds),
-          )
-        : []
+    const owners = await selectByInChunks<{
+      id: string
+      personal_user_id: string | null
+    }>({
+      table: 'owners',
+      select: 'id, personal_user_id',
+      column: 'id',
+      values: ownerIds,
+    })
     const profileIds = owners
       .map((row) => row.personal_user_id)
       .filter((value): value is string => typeof value === 'string')
-    const profiles =
-      profileIds.length > 0
-        ? await must(
-            client
-              .from('profiles')
-              .select('user_id, display_name')
-              .in('user_id', profileIds),
-          )
-        : []
+    const profiles = await selectByInChunks<{
+      user_id: string
+      display_name: string | null
+    }>({
+      table: 'profiles',
+      select: 'user_id, display_name',
+      column: 'user_id',
+      values: profileIds,
+    })
+
+    const enrollments = await selectByInChunks<{
+      course_id: string
+      status: string
+    }>({
+      table: 'enrollments',
+      select: 'course_id, status',
+      column: 'course_id',
+      values: courseIdList,
+    })
+
+    const enrollmentCountByCourse = new Map<string, number>()
+    for (const enrollment of enrollments) {
+      if (enrollment.status !== 'active' && enrollment.status !== 'completed') {
+        continue
+      }
+      enrollmentCountByCourse.set(
+        enrollment.course_id,
+        (enrollmentCountByCourse.get(enrollment.course_id) ?? 0) + 1,
+      )
+    }
 
     const publicationByCourse = new Map(
       publications.map((row) => [
@@ -2526,7 +2933,7 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
     const versionById = new Map(
       versions.map((row) => [
         row.id as string,
-        row as { title: string; description: string },
+        row as { title: string; description: string; content: unknown },
       ]),
     )
     const profileByUserId = new Map(
@@ -2566,6 +2973,13 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
         price_cents: course.price_cents,
         currency: course.currency,
         stripe_price_id: course.stripe_price_id,
+        category_ids: course.category_ids ?? [],
+        tags: course.tags ?? [],
+        language_code: course.language_code ?? 'en',
+        preview_lesson_id: course.preview_lesson_id ?? null,
+        enrollment_count: enrollmentCountByCourse.get(course.id) ?? 0,
+        popularity_score: enrollmentCountByCourse.get(course.id) ?? 0,
+        content: version.content,
         owner_display_name: ownerDisplayName,
       })
     }
@@ -2585,6 +2999,10 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
         price_cents: course.price_cents,
         currency: course.currency,
         stripe_price_id: course.stripe_price_id,
+        category_ids: course.category_ids ?? [],
+        tags: course.tags ?? [],
+        language_code: course.language_code ?? 'en',
+        preview_lesson_id: course.preview_lesson_id ?? null,
         version_id: draft.id,
         version: draft.version,
         status: draft.status,
@@ -2610,6 +3028,10 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
       price_cents: course.price_cents,
       currency: course.currency,
       stripe_price_id: course.stripe_price_id,
+      category_ids: course.category_ids ?? [],
+      tags: course.tags ?? [],
+      language_code: course.language_code ?? 'en',
+      preview_lesson_id: course.preview_lesson_id ?? null,
       version_id: published.id,
       version: published.version,
       status: published.status,
@@ -2631,17 +3053,20 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
 
     provisionPersonalOwner,
 
-    async listPublicCourses() {
+    async listPublicCourses(query) {
       await ensureSeed()
       const courseRows = await must(
         client
           .from('courses')
-          .select('id, owner_id, slug, price_cents, currency, stripe_price_id'),
+          .select(
+            'id, owner_id, slug, price_cents, currency, stripe_price_id, category_ids, tags, language_code, preview_lesson_id',
+          ),
       )
       const rows = await hydratePublicRows(courseRows as DbCourseIdentity[])
-      return rows
-        .map((row) => mapPublicJoinedToRecord(row))
-        .sort((a, b) => a.title.localeCompare(b.title))
+      return applyPublicCatalogQuery(
+        rows.map((row) => mapPublicJoinedToRecord(row)),
+        query,
+      )
     },
 
     async getPublicCourseById(id) {
@@ -2651,7 +3076,9 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
       const course = await must(
         client
           .from('courses')
-          .select('id, owner_id, slug, price_cents, currency, stripe_price_id')
+          .select(
+            'id, owner_id, slug, price_cents, currency, stripe_price_id, category_ids, tags, language_code, preview_lesson_id',
+          )
           .eq('id', dbCourseId)
           .maybeSingle(),
       )
@@ -2668,7 +3095,9 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
       const course = await must(
         client
           .from('courses')
-          .select('id, owner_id, slug, price_cents, currency, stripe_price_id')
+          .select(
+            'id, owner_id, slug, price_cents, currency, stripe_price_id, category_ids, tags, language_code, preview_lesson_id',
+          )
           .eq('slug', slug)
           .maybeSingle(),
       )
@@ -2680,6 +3109,23 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
       return row ? mapPublicJoinedToRecord(row) : null
     },
 
+    async getPublicPreviewLessonBySlug(slug) {
+      const publicCourse = await this.getPublicCourseBySlug(slug)
+      if (!publicCourse) {
+        return null
+      }
+
+      const lesson = findPreviewLesson(publicCourse)
+      if (!lesson) {
+        return null
+      }
+
+      return {
+        course: publicCourse,
+        lesson,
+      }
+    },
+
     async getEnrollmentForUserCourse({ userId, courseId }) {
       assertUuid(userId, 'userId')
       const dbCourseId = toDbCourseId(courseId)
@@ -2687,7 +3133,9 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
       const row = await must(
         client
           .from('enrollments')
-          .select('id, course_id, status, enrolled_at')
+          .select(
+            'id, course_id, status, enrolled_at, last_visited_lesson_id, last_visited_block, last_visited_content_page_id, last_visited_exercise_id, last_visited_at',
+          )
           .eq('user_id', userId)
           .eq('course_id', dbCourseId)
           .maybeSingle(),
@@ -2715,7 +3163,9 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
       const existing = await must(
         client
           .from('enrollments')
-          .select('id, course_id, status, enrolled_at')
+          .select(
+            'id, course_id, status, enrolled_at, last_visited_lesson_id, last_visited_block, last_visited_content_page_id, last_visited_exercise_id, last_visited_at',
+          )
           .eq('user_id', userId)
           .eq('course_id', dbCourseId)
           .maybeSingle(),
@@ -2733,10 +3183,62 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
             course_id: dbCourseId,
             status: 'active',
           })
-          .select('id, course_id, status, enrolled_at')
+          .select(
+            'id, course_id, status, enrolled_at, last_visited_lesson_id, last_visited_block, last_visited_content_page_id, last_visited_exercise_id, last_visited_at',
+          )
           .single(),
       )
       return mapEnrollmentRow(inserted)
+    },
+
+    async upsertLearnerResumePosition({
+      userId,
+      courseId,
+      lessonId,
+      block,
+      contentPageId,
+      exerciseId,
+    }) {
+      assertUuid(userId, 'userId')
+      const dbCourseId = toDbCourseId(courseId)
+
+      const updated = await must(
+        client
+          .from('enrollments')
+          .update({
+            last_visited_lesson_id: lessonId,
+            last_visited_block: block,
+            last_visited_content_page_id:
+              block === 'contentPage' ? (contentPageId ?? null) : null,
+            last_visited_exercise_id:
+              block === 'exercise' ? (exerciseId ?? null) : null,
+            last_visited_at: nowIso(),
+          })
+          .eq('user_id', userId)
+          .eq('course_id', dbCourseId)
+          .in('status', ['active', 'completed'])
+          .select(
+            'course_id, last_visited_lesson_id, last_visited_block, last_visited_content_page_id, last_visited_exercise_id, last_visited_at',
+          )
+          .maybeSingle(),
+      )
+
+      if (!updated) {
+        throw new Error('Course is not available to this learner.')
+      }
+
+      return {
+        courseId: String(updated.course_id),
+        lessonId: String(updated.last_visited_lesson_id),
+        block: updated.last_visited_block as
+          | 'summary'
+          | 'contentPage'
+          | 'exercise',
+        contentPageId:
+          (updated.last_visited_content_page_id as string | null) ?? null,
+        exerciseId: (updated.last_visited_exercise_id as string | null) ?? null,
+        visitedAt: toIso(updated.last_visited_at as string | Date) ?? nowIso(),
+      }
     },
 
     async listMyPayments({ userId }) {
@@ -2808,8 +3310,12 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
       const enrollments = await must(
         client
           .from('enrollments')
-          .select('course_id, status, enrolled_at')
+          .select(
+            'course_id, status, enrolled_at, last_visited_lesson_id, last_visited_block, last_visited_content_page_id, last_visited_exercise_id, last_visited_at',
+          )
           .eq('user_id', userId)
+          .in('status', ['active', 'completed'])
+          .order('last_visited_at', { ascending: false, nullsFirst: false })
           .order('enrolled_at', { ascending: false }),
       )
       if (enrollments.length === 0) {
@@ -2878,16 +3384,29 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
     },
 
     async listLearnerCourses({ userId }) {
-      const myCourses = await this.listMyCourses({ userId })
-      if (myCourses.length === 0) {
+      const enrollments = await must(
+        client
+          .from('enrollments')
+          .select(
+            'course_id, status, enrolled_at, last_visited_lesson_id, last_visited_block, last_visited_content_page_id, last_visited_exercise_id, last_visited_at',
+          )
+          .eq('user_id', userId)
+          .in('status', ['active', 'completed'])
+          .order('last_visited_at', { ascending: false, nullsFirst: false })
+          .order('enrolled_at', { ascending: false }),
+      )
+
+      if (enrollments.length === 0) {
         return []
       }
 
-      const courseIds = myCourses.map((row) => row.id)
+      const courseIds = enrollments.map((row) => row.course_id as string)
       const courses = await must(
         client
           .from('courses')
-          .select('id, owner_id, slug, price_cents, currency, stripe_price_id')
+          .select(
+            'id, owner_id, slug, price_cents, currency, stripe_price_id, category_ids, tags, language_code, preview_lesson_id',
+          )
           .in('id', courseIds),
       )
       const publications = await must(
@@ -2924,12 +3443,17 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
         (versions as DbCourseVersion[]).map((row) => [row.id, row]),
       )
 
+      const enrollmentByCourseId = new Map(
+        enrollments.map((row) => [row.course_id as string, row]),
+      )
+
       return courseIds
         .map((courseId) => {
           const course = courseById.get(courseId)
+          const enrollment = enrollmentByCourseId.get(courseId)
           const versionId = publicationByCourseId.get(courseId)
           const version = versionId ? versionById.get(versionId) : null
-          if (!course || !version) {
+          if (!course || !version || !enrollment) {
             return null
           }
 
@@ -2940,6 +3464,10 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
             price_cents: course.price_cents,
             currency: course.currency,
             stripe_price_id: course.stripe_price_id,
+            category_ids: course.category_ids ?? [],
+            tags: course.tags ?? [],
+            language_code: course.language_code ?? 'en',
+            preview_lesson_id: course.preview_lesson_id ?? null,
             version_id: version.id,
             version: version.version,
             status: version.status,
@@ -2951,6 +3479,21 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
             created_by: version.created_by,
             published_at: version.published_at,
             archived_at: version.archived_at,
+            last_visited_lesson_id:
+              (enrollment.last_visited_lesson_id as string | null) ?? null,
+            last_visited_block:
+              (enrollment.last_visited_block as
+                | 'summary'
+                | 'contentPage'
+                | 'exercise'
+                | null) ?? null,
+            last_visited_content_page_id:
+              (enrollment.last_visited_content_page_id as string | null) ??
+              null,
+            last_visited_exercise_id:
+              (enrollment.last_visited_exercise_id as string | null) ?? null,
+            last_visited_at:
+              (enrollment.last_visited_at as string | Date | null) ?? null,
           })
         })
         .filter((row): row is PublisherCourseRecord => Boolean(row))
@@ -2962,7 +3505,9 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
       const enrollment = await must(
         client
           .from('enrollments')
-          .select('status')
+          .select(
+            'status, last_visited_lesson_id, last_visited_block, last_visited_content_page_id, last_visited_exercise_id, last_visited_at',
+          )
           .eq('user_id', userId)
           .eq('course_id', dbCourseId)
           .in('status', ['active', 'completed'])
@@ -2975,7 +3520,9 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
       const course = await must(
         client
           .from('courses')
-          .select('id, owner_id, slug, price_cents, currency, stripe_price_id')
+          .select(
+            'id, owner_id, slug, price_cents, currency, stripe_price_id, category_ids, tags, language_code, preview_lesson_id',
+          )
           .eq('id', dbCourseId)
           .maybeSingle(),
       )
@@ -2993,6 +3540,10 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
         price_cents: (course.price_cents as number | null) ?? null,
         currency: String(course.currency ?? 'eur'),
         stripe_price_id: (course.stripe_price_id as string | null) ?? null,
+        category_ids: (course.category_ids as string[] | null) ?? [],
+        tags: (course.tags as string[] | null) ?? [],
+        language_code: (course.language_code as string | null) ?? 'en',
+        preview_lesson_id: (course.preview_lesson_id as string | null) ?? null,
         version_id: published.id,
         version: published.version,
         status: published.status,
@@ -3004,6 +3555,20 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
         created_by: published.created_by,
         published_at: published.published_at,
         archived_at: published.archived_at,
+        last_visited_lesson_id:
+          (enrollment.last_visited_lesson_id as string | null) ?? null,
+        last_visited_block:
+          (enrollment.last_visited_block as
+            | 'summary'
+            | 'contentPage'
+            | 'exercise'
+            | null) ?? null,
+        last_visited_content_page_id:
+          (enrollment.last_visited_content_page_id as string | null) ?? null,
+        last_visited_exercise_id:
+          (enrollment.last_visited_exercise_id as string | null) ?? null,
+        last_visited_at:
+          (enrollment.last_visited_at as string | Date | null) ?? null,
       })
     },
 
@@ -3177,7 +3742,9 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
       const courses = await must(
         client
           .from('courses')
-          .select('id, owner_id, slug, price_cents, currency, stripe_price_id')
+          .select(
+            'id, owner_id, slug, price_cents, currency, stripe_price_id, category_ids, tags, language_code, preview_lesson_id',
+          )
           .eq('owner_id', ownerId),
       )
 
@@ -3198,7 +3765,9 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
       const course = await must(
         client
           .from('courses')
-          .select('id, owner_id, slug, price_cents, currency, stripe_price_id')
+          .select(
+            'id, owner_id, slug, price_cents, currency, stripe_price_id, category_ids, tags, language_code, preview_lesson_id',
+          )
           .eq('id', dbCourseId)
           .eq('owner_id', ownerId)
           .maybeSingle(),
@@ -3217,7 +3786,9 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
       const existing = await must(
         client
           .from('courses')
-          .select('id, owner_id, slug, price_cents, currency, stripe_price_id')
+          .select(
+            'id, owner_id, slug, price_cents, currency, stripe_price_id, category_ids, tags, language_code, preview_lesson_id',
+          )
           .eq('id', dbCourseId)
           .maybeSingle(),
       )
@@ -3232,6 +3803,10 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
             price_cents: row.priceCents,
             currency: row.currency,
             stripe_price_id: row.stripePriceId,
+            category_ids: row.categoryIds,
+            tags: row.tags,
+            language_code: row.languageCode,
+            preview_lesson_id: row.previewLessonId,
           }),
         )
 
@@ -3264,6 +3839,10 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
           price_cents: row.priceCents,
           currency: row.currency,
           stripe_price_id: row.stripePriceId,
+          category_ids: row.categoryIds,
+          tags: row.tags,
+          language_code: row.languageCode,
+          preview_lesson_id: row.previewLessonId,
           version_id: String(created.id),
           version: Number(created.version),
           status: created.status,
@@ -3290,6 +3869,10 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
             price_cents: row.priceCents,
             currency: row.currency,
             stripe_price_id: row.stripePriceId,
+            category_ids: row.categoryIds,
+            tags: row.tags,
+            language_code: row.languageCode,
+            preview_lesson_id: row.previewLessonId,
             updated_at: nowIso(),
           })
           .eq('id', dbCourseId),
@@ -3319,6 +3902,10 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
           price_cents: row.priceCents,
           currency: row.currency,
           stripe_price_id: row.stripePriceId,
+          category_ids: row.categoryIds,
+          tags: row.tags,
+          language_code: row.languageCode,
+          preview_lesson_id: row.previewLessonId,
           version_id: String(updated.id),
           version: Number(updated.version),
           status: updated.status,
@@ -3363,6 +3950,10 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
         price_cents: row.priceCents,
         currency: row.currency,
         stripe_price_id: row.stripePriceId,
+        category_ids: row.categoryIds,
+        tags: row.tags,
+        language_code: row.languageCode,
+        preview_lesson_id: row.previewLessonId,
         version_id: String(inserted.id),
         version: Number(inserted.version),
         status: inserted.status,
@@ -3394,6 +3985,10 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
           price_cents: course.price_cents,
           currency: course.currency,
           stripe_price_id: course.stripe_price_id,
+          category_ids: course.category_ids ?? [],
+          tags: course.tags ?? [],
+          language_code: course.language_code ?? 'en',
+          preview_lesson_id: course.preview_lesson_id ?? null,
           version_id: existingDraft.id,
           version: existingDraft.version,
           status: existingDraft.status,
@@ -3443,6 +4038,10 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
         price_cents: course.price_cents,
         currency: course.currency,
         stripe_price_id: course.stripe_price_id,
+        category_ids: course.category_ids ?? [],
+        tags: course.tags ?? [],
+        language_code: course.language_code ?? 'en',
+        preview_lesson_id: course.preview_lesson_id ?? null,
         version_id: String(inserted.id),
         version: Number(inserted.version),
         status: inserted.status,
@@ -3515,6 +4114,10 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
         price_cents: course.price_cents,
         currency: course.currency,
         stripe_price_id: course.stripe_price_id,
+        category_ids: course.category_ids ?? [],
+        tags: course.tags ?? [],
+        language_code: course.language_code ?? 'en',
+        preview_lesson_id: course.preview_lesson_id ?? null,
         version_id: String(published.id),
         version: Number(published.version),
         status: published.status,
@@ -3578,6 +4181,10 @@ export function createWorkerSupabaseCourseRepositoryImpl(config: {
         price_cents: course.price_cents,
         currency: course.currency,
         stripe_price_id: course.stripe_price_id,
+        category_ids: course.category_ids ?? [],
+        tags: course.tags ?? [],
+        language_code: course.language_code ?? 'en',
+        preview_lesson_id: course.preview_lesson_id ?? null,
         version_id: String(inserted.id),
         version: Number(inserted.version),
         status: inserted.status,

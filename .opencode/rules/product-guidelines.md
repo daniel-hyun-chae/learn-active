@@ -19,6 +19,7 @@ This repository is pnpm-based and requires lockfile parity with the repository-d
 - Local and staging environments must always have idempotent sample course seed content available for manual validation.
 - Seed content must be realistic and cover all currently supported learner/publisher content and exercise capabilities.
 - Whenever a new learner/publisher capability is introduced (new block type, exercise type, or major behavior mode), seed content and related integration checks must be updated in the same change.
+- The canonical sample German course in `apps/api/src/features/course/seed.ts` is the required baseline fixture and must include each currently supported learner exercise type when applicable.
 
 ## Implementation Gate (Product)
 

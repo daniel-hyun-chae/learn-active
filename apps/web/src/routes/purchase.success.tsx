@@ -33,12 +33,12 @@ function PurchaseSuccessRoute() {
   const navigate = useNavigate()
   const { courseId } = Route.useSearch()
   const [enrolled, setEnrolled] = useState(false)
-  const [polling, setPolling] = useState(true)
+  const [isPolling, setIsPolling] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!courseId) {
-      setPolling(false)
+      setIsPolling(false)
       return
     }
 
@@ -67,20 +67,20 @@ function PurchaseSuccessRoute() {
 
         if (data.courseEnrollmentStatus.enrolled) {
           setEnrolled(true)
-          setPolling(false)
+          setIsPolling(false)
           setError(null)
           return
         }
 
         if (attempts >= 20) {
-          setPolling(false)
+          setIsPolling(false)
           setError(t('mobile.learners.purchaseTimeout'))
           return
         }
       } catch {
         if (!cancelled) {
           setError(t('catalog.detail.checkoutError'))
-          setPolling(false)
+          setIsPolling(false)
         }
       }
 
@@ -109,11 +109,11 @@ function PurchaseSuccessRoute() {
   }, [courseId, enrolled, t])
 
   return (
-    <section>
+    <section data-polling={isPolling ? 'true' : 'false'}>
       <h2>{t('purchase.success.title')}</h2>
       <p className="muted">{subtitle}</p>
 
-      {polling && !enrolled ? (
+      {courseId && !error ? (
         <p className="muted">{t('catalog.detail.purchasePending')}</p>
       ) : null}
 

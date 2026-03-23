@@ -4,6 +4,7 @@ import type {
   CourseVersionHistoryRecord,
   LearnerExerciseAttemptRecord,
   LearnerExerciseAttemptHistoryRecord,
+  LearnerResumePositionRecord,
   EnrollmentRecord,
   PaymentRecord,
   PublicCourseRecord,
@@ -17,7 +18,25 @@ export type CourseWriteRow = {
   priceCents: number | null
   currency: string
   stripePriceId: string | null
+  categoryIds: string[]
+  tags: string[]
+  languageCode: string
+  previewLessonId: string | null
   content: { modules: PublisherCourseRecord['content']['modules'] }
+}
+
+export type PublicCatalogQuery = {
+  search?: string
+  categoryIds?: string[]
+  priceFilter?: 'all' | 'free' | 'paid'
+  languageCodes?: string[]
+  sort?: 'popular' | 'title'
+  limit?: number
+}
+
+export type PublicPreviewLessonRecord = {
+  course: PublicCourseRecord
+  lesson: PublisherCourseRecord['content']['modules'][number]['lessons'][number]
 }
 
 export type CourseRepository = {
@@ -26,13 +45,26 @@ export type CourseRepository = {
     userId: string
     email: string | null
   }) => Promise<{ ownerId: string }>
-  listPublicCourses: () => Promise<PublicCourseRecord[]>
+  listPublicCourses: (
+    query?: PublicCatalogQuery,
+  ) => Promise<PublicCourseRecord[]>
   getPublicCourseById: (id: string) => Promise<PublicCourseRecord | null>
   getPublicCourseBySlug: (slug: string) => Promise<PublicCourseRecord | null>
+  getPublicPreviewLessonBySlug: (
+    slug: string,
+  ) => Promise<PublicPreviewLessonRecord | null>
   getEnrollmentForUserCourse: (args: {
     userId: string
     courseId: string
   }) => Promise<EnrollmentRecord | null>
+  upsertLearnerResumePosition: (args: {
+    userId: string
+    courseId: string
+    lessonId: string
+    block: 'summary' | 'contentPage' | 'exercise'
+    contentPageId?: string | null
+    exerciseId?: string | null
+  }) => Promise<LearnerResumePositionRecord>
   enrollInCourse: (args: {
     userId: string
     courseId: string

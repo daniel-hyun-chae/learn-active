@@ -18,16 +18,35 @@ import { LearnerHome } from './home/LearnerHome'
 
 type ScreenState =
   | { name: 'home' }
-  | { name: 'lesson'; courseId: string; lessonId: string }
+  | {
+      name: 'lesson'
+      courseId: string
+      lessonId: string
+      previewMode?: boolean
+      previewLesson?: Lesson
+      initialSelection?:
+        | { type: 'summary' }
+        | { type: 'contentPage'; contentPageId: string }
+        | { type: 'exercise'; exerciseId: string }
+    }
 
 const coursesQuery = `query Courses {
   learnerCourses {
     id
+    versionId
     title
     description
     priceCents
     currency
     isPaid
+    resumePosition {
+      courseId
+      lessonId
+      block
+      contentPageId
+      exerciseId
+      visitedAt
+    }
     modules {
       id
       title
@@ -90,6 +109,15 @@ const coursesQuery = `query Courses {
               isCorrect
             }
           }
+          reordering {
+            prompt
+            items {
+              id
+              order
+              text
+              isDistractor
+            }
+          }
         }
       }
     }
@@ -102,6 +130,12 @@ const coursesQuery = `query Courses {
     priceCents
     currency
     isPaid
+    categoryIds
+    tags
+    languageCode
+    previewLessonId
+    enrollmentCount
+    popularityScore
   }
 }`
 
@@ -111,6 +145,29 @@ function findLesson(courses: Course[], courseId: string, lessonId: string) {
     .flatMap((module) => module.lessons)
     .find((item) => item.id === lessonId)
   return lesson
+}
+
+function resolveInitialSelection(course: Course | undefined, lessonId: string) {
+  const position = course?.resumePosition
+  if (!position || position.lessonId !== lessonId) {
+    return undefined
+  }
+
+  if (position.block === 'contentPage' && position.contentPageId) {
+    return {
+      type: 'contentPage' as const,
+      contentPageId: position.contentPageId,
+    }
+  }
+
+  if (position.block === 'exercise' && position.exerciseId) {
+    return {
+      type: 'exercise' as const,
+      exerciseId: position.exerciseId,
+    }
+  }
+
+  return { type: 'summary' as const }
 }
 
 export function LearnerMobileApp() {
@@ -126,6 +183,9 @@ export function LearnerMobileApp() {
   const [purchasingCourseId, setPurchasingCourseId] = useState<string | null>(
     null,
   )
+  const [previewLoadingCourseId, setPreviewLoadingCourseId] = useState<
+    string | null
+  >(null)
   const [screen, setScreen] = useState<ScreenState>({ name: 'home' })
 
   const loadCourses = useCallback(async () => {
@@ -147,6 +207,9 @@ export function LearnerMobileApp() {
 
   const selectedLesson = useMemo<Lesson | null>(() => {
     if (screen.name !== 'lesson') return null
+    if (screen.previewMode) {
+      return screen.previewLesson ?? null
+    }
     return findLesson(courses, screen.courseId, screen.lessonId) ?? null
   }, [courses, screen])
 
@@ -290,6 +353,135 @@ export function LearnerMobileApp() {
     [t],
   )
 
+  const handleOpenPreview = useCallback(
+    async (course: CatalogCourse) => {
+      if (!course.previewLessonId) {
+        return
+      }
+
+      setPreviewLoadingCourseId(course.id)
+      setPurchaseError(null)
+      setStatusMessage(null)
+
+      try {
+        const data = await fetchGraphQL<{ publicPreviewCourse: Course | null }>(
+          `query PublicPreviewCourse($slug: String!) {
+            publicPreviewCourse(slug: $slug) {
+              id
+              versionId
+              title
+              description
+              previewLessonId
+              modules {
+                id
+                title
+                order
+                lessons {
+                  id
+                  title
+                  order
+                  contents {
+                    id
+                    type
+                    text
+                    imageUrl
+                    imageAlt
+                  }
+                  contentPages {
+                    id
+                    title
+                    order
+                    contents {
+                      id
+                      type
+                      text
+                      imageUrl
+                      imageAlt
+                    }
+                  }
+                  exercises {
+                    id
+                    type
+                    title
+                    instructions
+                    fillInBlank {
+                      steps {
+                        id
+                        order
+                        prompt
+                        threadId
+                        threadTitle
+                        segments {
+                          type
+                          text
+                          blankId
+                        }
+                        blanks {
+                          id
+                          correct
+                          variant
+                          options
+                        }
+                      }
+                    }
+                    multipleChoice {
+                      question
+                      allowsMultiple
+                      choices {
+                        id
+                        order
+                        text
+                        isCorrect
+                      }
+                    }
+                    reordering {
+                      prompt
+                      items {
+                        id
+                        order
+                        text
+                        isDistractor
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }`,
+          { slug: course.slug },
+        )
+
+        const previewCourse = data.publicPreviewCourse
+        const previewLessonId = previewCourse?.previewLessonId
+        const previewLesson =
+          previewLessonId && previewCourse
+            ? (previewCourse.modules
+                .flatMap((module) => module.lessons)
+                .find((lesson) => lesson.id === previewLessonId) ?? null)
+            : null
+
+        if (!previewLesson) {
+          setPurchaseError(t('catalog.detail.previewUnavailable'))
+          return
+        }
+
+        setScreen({
+          name: 'lesson',
+          courseId: previewCourse?.id ?? course.id,
+          lessonId: previewLesson.id,
+          previewMode: true,
+          previewLesson,
+          initialSelection: { type: 'summary' },
+        })
+      } catch {
+        setPurchaseError(t('catalog.detail.previewUnavailable'))
+      } finally {
+        setPreviewLoadingCourseId(null)
+      }
+    },
+    [t],
+  )
+
   if (loading && courses.length === 0 && catalogCourses.length === 0) {
     return (
       <View style={styles.loadingContainer}>
@@ -337,6 +529,40 @@ export function LearnerMobileApp() {
         <LessonView
           lesson={selectedLesson}
           onBack={() => setScreen({ name: 'home' })}
+          initialSelection={screen.initialSelection}
+          onSelectionChange={(selection) => {
+            if (screen.previewMode) {
+              return
+            }
+            void fetchGraphQL<{
+              upsertLearnerResumePosition: {
+                courseId: string
+                lessonId: string
+              }
+            }>(
+              `mutation UpsertLearnerResumePosition($input: LearnerResumePositionInput!) {
+                upsertLearnerResumePosition(input: $input) {
+                  courseId
+                  lessonId
+                }
+              }`,
+              {
+                input: {
+                  courseId: screen.courseId,
+                  lessonId: selectedLesson.id,
+                  block: selection.type,
+                  contentPageId:
+                    selection.type === 'contentPage'
+                      ? selection.contentPageId
+                      : null,
+                  exerciseId:
+                    selection.type === 'exercise' ? selection.exerciseId : null,
+                },
+              },
+            ).catch(() => {
+              // keep lesson navigation responsive even if persistence fails
+            })
+          }}
         />
       </View>
     )
@@ -368,12 +594,20 @@ export function LearnerMobileApp() {
         statusMessage={statusMessage}
         pendingCourseId={pendingCourseId}
         purchasingCourseId={purchasingCourseId}
+        previewLoadingCourseId={previewLoadingCourseId}
         onRetry={loadCourses}
         onEnrollFree={handleEnrollFree}
         onBuyCourse={handleBuyCourse}
-        onSelectLesson={(courseId, lessonId) =>
-          setScreen({ name: 'lesson', courseId, lessonId })
-        }
+        onOpenPreview={handleOpenPreview}
+        onSelectLesson={(courseId, lessonId) => {
+          const targetCourse = courses.find((course) => course.id === courseId)
+          setScreen({
+            name: 'lesson',
+            courseId,
+            lessonId,
+            initialSelection: resolveInitialSelection(targetCourse, lessonId),
+          })
+        }}
       />
     </View>
   )

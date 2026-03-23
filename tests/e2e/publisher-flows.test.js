@@ -745,6 +745,50 @@ async function openPublisherLanding(page, baseUrl, attempts = 3) {
   }
 }
 
+async function openLearnerHomeWithContinue(page, baseUrl, attempts = 6) {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    await page.goto(`${baseUrl}/learn`, { waitUntil: 'networkidle' })
+
+    const authEntryCount = await page.getByTestId('auth-entry-page').count()
+    if (authEntryCount > 0) {
+      throw new Error(
+        `Learner redirected to auth entry while opening /learn (attempt ${attempt})`,
+      )
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+
+    const continueCount = await page
+      .getByTestId('continue-learning-card')
+      .count()
+    if (continueCount > 0) {
+      return
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+  }
+
+  const currentUrl = page.url()
+  const authEntryCount = await page.getByTestId('auth-entry-page').count()
+  const courseCardCount = await page.getByTestId('course-card').count()
+  const fallbackCount = await page.getByTestId('catalog-fallback-grid').count()
+  const showErrorButtons = page.getByText('Show Error')
+  if ((await showErrorButtons.count()) > 0) {
+    await showErrorButtons
+      .first()
+      .click()
+      .catch(() => undefined)
+  }
+  const bodyText = await page
+    .locator('body')
+    .innerText()
+    .catch(() => '')
+
+  throw new Error(
+    `Continue card not visible after retries. url=${currentUrl} authEntry=${authEntryCount} courseCards=${courseCardCount} fallback=${fallbackCount} body=${bodyText.slice(0, 500)}`,
+  )
+}
+
 async function readValues(locator) {
   return locator.evaluateAll((nodes) =>
     nodes.map((node) => String(node.getAttribute('data-id') ?? '')),
@@ -1877,6 +1921,114 @@ test(
 
     assert.equal(enrollmentData.courseEnrollmentStatus.enrolled, true)
     assert.equal(enrollmentData.courseEnrollmentStatus.status, 'active')
+  },
+)
+
+test(
+  'learner continue card opens saved resume exercise target',
+  { timeout: 240000 },
+  async () => {
+    const unique = `${Date.now().toString(36)}-resume-e2e`
+    const learnerStoragePath = path.join(
+      stack.authStorageDir,
+      `learner-${unique}-storage-state.json`,
+    )
+    const learnerEmail = `learner-${unique}@example.test`
+    const courseId = 'a40bbc79-482b-5cc3-8e46-03df67d0224d'
+    const lessonId = 'lesson-b1-terminplanung'
+    const exerciseId = 'exercise-b1-termin-mc-1'
+
+    await createAuthStorageState({
+      chromium,
+      baseUrl: stack.baseUrl,
+      storageStatePath: learnerStoragePath,
+      email: learnerEmail,
+      returnToPath: '/my-courses',
+      waitForTestId: 'auth-user-email',
+      waitForTestIdTimeoutMs: 90000,
+    })
+
+    const learnerToken = extractAccessTokenFromStorageState(learnerStoragePath)
+    assert.ok(learnerToken, 'learner token should be present in storage state')
+
+    await graphqlRequest({
+      token: learnerToken,
+      query: `mutation EnrollInCourse($courseId: String!) {
+        enrollInCourse(courseId: $courseId) {
+          id
+        }
+      }`,
+      variables: { courseId },
+    })
+
+    await graphqlRequest({
+      token: learnerToken,
+      query: `mutation UpsertResume($input: LearnerResumePositionInput!) {
+        upsertLearnerResumePosition(input: $input) {
+          courseId
+          lessonId
+          block
+          exerciseId
+        }
+      }`,
+      variables: {
+        input: {
+          courseId,
+          lessonId,
+          block: 'exercise',
+          exerciseId,
+        },
+      },
+    })
+
+    const resumeCheck = await graphqlRequest({
+      token: learnerToken,
+      query: `query LearnerCourseResumeCheck($id: String!) {
+        learnerCourse(id: $id) {
+          id
+          resumePosition {
+            lessonId
+            block
+            exerciseId
+          }
+        }
+      }`,
+      variables: { id: courseId },
+    })
+
+    assert.equal(resumeCheck.learnerCourse?.id, courseId)
+    assert.equal(resumeCheck.learnerCourse?.resumePosition?.lessonId, lessonId)
+    assert.equal(resumeCheck.learnerCourse?.resumePosition?.block, 'exercise')
+    assert.equal(
+      resumeCheck.learnerCourse?.resumePosition?.exerciseId,
+      exerciseId,
+    )
+
+    const browser = await chromium.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    })
+    const context = await browser.newContext({
+      storageState: learnerStoragePath,
+      viewport: { width: 1365, height: 900 },
+    })
+    const page = await context.newPage()
+
+    try {
+      await openLearnerHomeWithContinue(page, stack.baseUrl)
+      await page.getByTestId('continue-learning-link').click()
+
+      await page.waitForURL(
+        new RegExp(
+          `/courses/${courseId}/lessons/${lessonId}\\?[^#]*block=exercise[^#]*exerciseId=${exerciseId}`,
+        ),
+        { timeout: 90000 },
+      )
+      await waitForVisible(page, 'multiple-choice-exercise', 60000)
+    } finally {
+      await context.close()
+      await browser.close()
+    }
   },
 )
 

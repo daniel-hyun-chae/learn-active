@@ -58,7 +58,11 @@ A unit of content within a ContentPage. Can be text, media, or an Exercise refer
 
 ### Exercise
 
-A polymorphic interactive assessment within a Lesson. Discriminated by `exerciseType`. Current types: `FILL_IN_THE_BLANK`, `MULTIPLE_CHOICE`. Stored inside the JSONB content blob.
+A polymorphic interactive assessment within a Lesson. Discriminated by `exerciseType`. Current types: `FILL_IN_THE_BLANK`, `MULTIPLE_CHOICE`, `REORDERING`. Stored inside the JSONB content blob.
+
+### ReorderingItem
+
+An ordered content token in a reordering Exercise. Reordering items contain display text, canonical sequence order, and an `isDistractor` flag for items that are intentionally not part of the correct sequence. Stored inside the JSONB content blob.
 
 ### ExerciseStep
 

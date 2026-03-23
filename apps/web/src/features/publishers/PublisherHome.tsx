@@ -40,6 +40,7 @@ import type { Exercise, Lesson } from '../learners/course/types'
 import { LessonView } from '../learners/course/LessonView'
 import { FillInBlankExercise } from '../learners/course/exercises/FillInBlankExercise'
 import { MultipleChoiceExercise } from '../learners/course/exercises/MultipleChoiceExercise'
+import { ReorderingExercise } from '../learners/course/exercises/ReorderingExercise'
 
 type PublisherHomeProps = {
   course: CourseDraft
@@ -57,6 +58,10 @@ const COURSE_DRAFT_SELECTION = `
   priceCents
   currency
   stripePriceId
+  categoryIds
+  tags
+  languageCode
+  previewLessonId
   isPaid
   changeNote
   createdAt
@@ -102,6 +107,15 @@ const COURSE_DRAFT_SELECTION = `
             order
             text
             isCorrect
+          }
+        }
+        reordering {
+          prompt
+          items {
+            id
+            order
+            text
+            isDistractor
           }
         }
       }
@@ -166,6 +180,26 @@ function formatValidationIssue(
 }
 
 function toLearnerExercise(exercise: ExerciseDraft): Exercise {
+  if (exercise.type === 'REORDERING') {
+    return {
+      id: exercise.id ?? createId('exercise'),
+      type: 'REORDERING',
+      title: exercise.title,
+      instructions: exercise.instructions,
+      reordering: {
+        prompt: exercise.reordering?.prompt ?? '',
+        items: [...(exercise.reordering?.items ?? [])]
+          .sort((a, b) => a.order - b.order)
+          .map((item, index) => ({
+            id: item.id ?? createId('reordering-item'),
+            order: item.order ?? index + 1,
+            text: item.text,
+            isDistractor: Boolean(item.isDistractor),
+          })),
+      },
+    }
+  }
+
   if (exercise.type === 'MULTIPLE_CHOICE') {
     return {
       id: exercise.id ?? createId('exercise'),
@@ -229,6 +263,10 @@ function getMultipleChoiceChoices(exercise: ExerciseDraft) {
   return exercise.multipleChoice?.choices ?? []
 }
 
+function getReorderingItems(exercise: ExerciseDraft) {
+  return exercise.reordering?.items ?? []
+}
+
 function withUpdatedMultipleChoice(
   exercise: ExerciseDraft,
   updater: (
@@ -258,6 +296,23 @@ function withUpdatedFillInBlank(
   }
 }
 
+function withUpdatedReordering(
+  exercise: ExerciseDraft,
+  updater: (
+    reordering: NonNullable<ExerciseDraft['reordering']>,
+  ) => NonNullable<ExerciseDraft['reordering']>,
+): ExerciseDraft {
+  const base = exercise.reordering ?? {
+    prompt: '',
+    items: [],
+  }
+
+  return {
+    ...exercise,
+    reordering: updater(base),
+  }
+}
+
 function withUpdatedExerciseType(
   exercise: ExerciseDraft,
   type: ExerciseDraft['type'],
@@ -266,8 +321,40 @@ function withUpdatedExerciseType(
     multipleChoiceChoicePlaceholder: string
     fillPrompt: string
     fillThreadTitle: string
+    reorderingPrompt: string
+    reorderingItemPlaceholder: string
   },
 ): ExerciseDraft {
+  if (type === 'REORDERING') {
+    return {
+      ...exercise,
+      type,
+      reordering: exercise.reordering ?? {
+        prompt: defaults.reorderingPrompt,
+        items: [
+          {
+            id: createId('reordering-item'),
+            order: 1,
+            text: defaults.reorderingItemPlaceholder,
+            isDistractor: false,
+          },
+          {
+            id: createId('reordering-item'),
+            order: 2,
+            text: defaults.reorderingItemPlaceholder,
+            isDistractor: false,
+          },
+          {
+            id: createId('reordering-item'),
+            order: 3,
+            text: defaults.reorderingItemPlaceholder,
+            isDistractor: true,
+          },
+        ],
+      },
+    }
+  }
+
   if (type === 'MULTIPLE_CHOICE') {
     return {
       ...exercise,
@@ -861,6 +948,29 @@ export function PublisherHome({ course }: PublisherHomeProps) {
               },
             ],
           },
+          reordering: {
+            prompt: t('publishers.exercise.reordering.defaultPrompt'),
+            items: [
+              {
+                id: createId('reordering-item'),
+                order: 1,
+                text: t('publishers.exercise.reordering.itemPlaceholder'),
+                isDistractor: false,
+              },
+              {
+                id: createId('reordering-item'),
+                order: 2,
+                text: t('publishers.exercise.reordering.itemPlaceholder'),
+                isDistractor: false,
+              },
+              {
+                id: createId('reordering-item'),
+                order: 3,
+                text: t('publishers.exercise.reordering.itemPlaceholder'),
+                isDistractor: true,
+              },
+            ],
+          },
         },
       ],
     }))
@@ -1285,6 +1395,74 @@ export function PublisherHome({ course }: PublisherHomeProps) {
               }
             />
           </label>
+          <label className="publisher-field">
+            {t('publishers.course.languageCode')}
+            <input
+              type="text"
+              data-test="publisher-course-language-code"
+              value={draft.languageCode ?? 'en'}
+              onChange={(event) =>
+                updateDraft({ languageCode: event.target.value.toLowerCase() })
+              }
+            />
+          </label>
+          <label className="publisher-field">
+            {t('publishers.course.categoryIds')}
+            <input
+              type="text"
+              data-test="publisher-course-categories"
+              value={(draft.categoryIds ?? []).join(', ')}
+              onChange={(event) =>
+                updateDraft({
+                  categoryIds: event.target.value
+                    .split(',')
+                    .map((value) => value.trim())
+                    .filter(Boolean),
+                })
+              }
+            />
+            <small className="muted">
+              {t('publishers.course.categoryHint')}
+            </small>
+          </label>
+          <label className="publisher-field publisher-full">
+            {t('publishers.course.tags')}
+            <input
+              type="text"
+              data-test="publisher-course-tags"
+              value={(draft.tags ?? []).join(', ')}
+              onChange={(event) =>
+                updateDraft({
+                  tags: event.target.value
+                    .split(',')
+                    .map((value) => value.trim())
+                    .filter(Boolean),
+                })
+              }
+            />
+          </label>
+          <label className="publisher-field publisher-full">
+            {t('publishers.course.previewLessonId')}
+            <select
+              data-test="publisher-course-preview-lesson"
+              value={draft.previewLessonId ?? ''}
+              onChange={(event) =>
+                updateDraft({
+                  previewLessonId: event.target.value || null,
+                })
+              }
+            >
+              <option value="">{t('publishers.course.previewNone')}</option>
+              {draft.modules
+                .flatMap((module) => module.lessons)
+                .sort((a, b) => a.order - b.order)
+                .map((lesson) => (
+                  <option key={lesson.id} value={lesson.id}>
+                    {lesson.title}
+                  </option>
+                ))}
+            </select>
+          </label>
         </div>
       )
     }
@@ -1602,6 +1780,7 @@ export function PublisherHome({ course }: PublisherHomeProps) {
       const selectedExerciseType = selectedExercise.type
       const fillSteps = getFillSteps(selectedExercise)
       const multipleChoices = getMultipleChoiceChoices(selectedExercise)
+      const reorderingItems = getReorderingItems(selectedExercise)
 
       return (
         <div className="publisher-stack">
@@ -1650,6 +1829,12 @@ export function PublisherHome({ course }: PublisherHomeProps) {
                             'publishers.exercise.promptPlaceholder',
                           ),
                           fillThreadTitle: t('publishers.exercise.threadTitle'),
+                          reorderingPrompt: t(
+                            'publishers.exercise.reordering.defaultPrompt',
+                          ),
+                          reorderingItemPlaceholder: t(
+                            'publishers.exercise.reordering.itemPlaceholder',
+                          ),
                         },
                       ),
                   )
@@ -1660,6 +1845,9 @@ export function PublisherHome({ course }: PublisherHomeProps) {
                 </option>
                 <option value="MULTIPLE_CHOICE">
                   {t('publishers.exercise.typeMultipleChoice')}
+                </option>
+                <option value="REORDERING">
+                  {t('publishers.exercise.typeReordering')}
                 </option>
               </select>
             </label>
@@ -1703,6 +1891,28 @@ export function PublisherHome({ course }: PublisherHomeProps) {
                             question: event.target.value,
                           }),
                         ),
+                    )
+                  }
+                />
+              </label>
+            ) : null}
+            {selectedExerciseType === 'REORDERING' ? (
+              <label className="publisher-field publisher-full">
+                {t('publishers.exercise.reordering.prompt')}
+                <input
+                  type="text"
+                  data-test="publisher-reordering-prompt"
+                  value={selectedExercise.reordering?.prompt ?? ''}
+                  onChange={(event) =>
+                    updateExerciseById(
+                      selection.moduleId,
+                      selection.lessonId,
+                      selection.exerciseId,
+                      (exercise) =>
+                        withUpdatedReordering(exercise, (reordering) => ({
+                          ...reordering,
+                          prompt: event.target.value,
+                        })),
                     )
                   }
                 />
@@ -2206,6 +2416,223 @@ export function PublisherHome({ course }: PublisherHomeProps) {
                 ))}
             </div>
           ) : null}
+
+          {selectedExerciseType === 'REORDERING' ? (
+            <div className="publisher-step">
+              <div className="publisher-inline-actions">
+                <button
+                  type="button"
+                  className="ghost-button"
+                  data-test="publisher-reordering-add-item"
+                  onClick={() =>
+                    updateExerciseById(
+                      selection.moduleId,
+                      selection.lessonId,
+                      selection.exerciseId,
+                      (exercise) =>
+                        withUpdatedReordering(exercise, (reordering) => {
+                          const items = [...reordering.items]
+                          items.push({
+                            id: createId('reordering-item'),
+                            order: items.length + 1,
+                            text: t(
+                              'publishers.exercise.reordering.itemPlaceholder',
+                            ),
+                            isDistractor: false,
+                          })
+                          return {
+                            ...reordering,
+                            items,
+                          }
+                        }),
+                    )
+                  }
+                >
+                  {t('publishers.exercise.reordering.addItem')}
+                </button>
+              </div>
+
+              {reorderingItems
+                .slice()
+                .sort((a, b) => a.order - b.order)
+                .map((item, _itemIndex, sortedItems) => (
+                  <div key={item.id} className="publisher-blank">
+                    <div className="publisher-grid">
+                      <label className="publisher-field publisher-full">
+                        {t('publishers.exercise.reordering.itemText')}
+                        <input
+                          type="text"
+                          data-test="publisher-reordering-item-text"
+                          value={item.text}
+                          onChange={(event) =>
+                            updateExerciseById(
+                              selection.moduleId,
+                              selection.lessonId,
+                              selection.exerciseId,
+                              (exercise) =>
+                                withUpdatedReordering(
+                                  exercise,
+                                  (reordering) => ({
+                                    ...reordering,
+                                    items: reordering.items.map((existing) =>
+                                      existing.id === item.id
+                                        ? {
+                                            ...existing,
+                                            text: event.target.value,
+                                          }
+                                        : existing,
+                                    ),
+                                  }),
+                                ),
+                            )
+                          }
+                        />
+                      </label>
+
+                      <label className="publisher-field">
+                        <input
+                          type="checkbox"
+                          data-test="publisher-reordering-item-distractor"
+                          checked={Boolean(item.isDistractor)}
+                          onChange={(event) =>
+                            updateExerciseById(
+                              selection.moduleId,
+                              selection.lessonId,
+                              selection.exerciseId,
+                              (exercise) =>
+                                withUpdatedReordering(
+                                  exercise,
+                                  (reordering) => ({
+                                    ...reordering,
+                                    items: reordering.items.map((existing) =>
+                                      existing.id === item.id
+                                        ? {
+                                            ...existing,
+                                            isDistractor: event.target.checked,
+                                          }
+                                        : existing,
+                                    ),
+                                  }),
+                                ),
+                            )
+                          }
+                        />{' '}
+                        {t('publishers.exercise.reordering.distractor')}
+                      </label>
+
+                      <div className="publisher-inline-actions publisher-full">
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          data-test="publisher-reordering-item-move-up"
+                          onClick={() =>
+                            updateExerciseById(
+                              selection.moduleId,
+                              selection.lessonId,
+                              selection.exerciseId,
+                              (exercise) =>
+                                withUpdatedReordering(
+                                  exercise,
+                                  (reordering) => {
+                                    const current = [...reordering.items].sort(
+                                      (a, b) => a.order - b.order,
+                                    )
+                                    const idx = current.findIndex(
+                                      (entry) => entry.id === item.id,
+                                    )
+                                    if (idx <= 0) {
+                                      return reordering
+                                    }
+                                    const next = [...current]
+                                    const [moved] = next.splice(idx, 1)
+                                    next.splice(idx - 1, 0, moved)
+                                    return {
+                                      ...reordering,
+                                      items: next.map((entry, orderIndex) => ({
+                                        ...entry,
+                                        order: orderIndex + 1,
+                                      })),
+                                    }
+                                  },
+                                ),
+                            )
+                          }
+                        >
+                          {t('publishers.actions.moveUp')}
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          data-test="publisher-reordering-item-move-down"
+                          onClick={() =>
+                            updateExerciseById(
+                              selection.moduleId,
+                              selection.lessonId,
+                              selection.exerciseId,
+                              (exercise) =>
+                                withUpdatedReordering(
+                                  exercise,
+                                  (reordering) => {
+                                    const current = [...reordering.items].sort(
+                                      (a, b) => a.order - b.order,
+                                    )
+                                    const idx = current.findIndex(
+                                      (entry) => entry.id === item.id,
+                                    )
+                                    if (idx < 0 || idx >= current.length - 1) {
+                                      return reordering
+                                    }
+                                    const next = [...current]
+                                    const [moved] = next.splice(idx, 1)
+                                    next.splice(idx + 1, 0, moved)
+                                    return {
+                                      ...reordering,
+                                      items: next.map((entry, orderIndex) => ({
+                                        ...entry,
+                                        order: orderIndex + 1,
+                                      })),
+                                    }
+                                  },
+                                ),
+                            )
+                          }
+                        >
+                          {t('publishers.actions.moveDown')}
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          data-test="publisher-reordering-item-delete"
+                          onClick={() =>
+                            updateExerciseById(
+                              selection.moduleId,
+                              selection.lessonId,
+                              selection.exerciseId,
+                              (exercise) =>
+                                withUpdatedReordering(
+                                  exercise,
+                                  (reordering) => ({
+                                    ...reordering,
+                                    items: reordering.items
+                                      .filter((entry) => entry.id !== item.id)
+                                      .map((entry, orderIndex) => ({
+                                        ...entry,
+                                        order: orderIndex + 1,
+                                      })),
+                                  }),
+                                ),
+                            )
+                          }
+                          disabled={sortedItems.length <= 1}
+                        >
+                          {t('publishers.actions.delete')}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          ) : null}
         </div>
       )
     }
@@ -2282,6 +2709,8 @@ export function PublisherHome({ course }: PublisherHomeProps) {
         <div className="publisher-preview" data-test="publisher-preview-root">
           {learnerExercise.type === 'MULTIPLE_CHOICE' ? (
             <MultipleChoiceExercise exercise={learnerExercise} />
+          ) : learnerExercise.type === 'REORDERING' ? (
+            <ReorderingExercise exercise={learnerExercise} />
           ) : (
             <FillInBlankExercise
               exercise={

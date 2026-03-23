@@ -33,7 +33,8 @@ A publisher can trigger AI-powered exercise generation from the authoring worksp
 
 - BG-005 (exercise type abstraction must be settled so generated exercises match the schema).
 - BG-006 (at least two exercise types should exist to make generation useful).
+- BG-028 (AI runtime foundation provides the shared provider abstraction, prompt management, and cost tracking).
 
 ## Notes
 
-Requires a decision log entry for the chosen LLM provider and integration approach. Consider rate limiting and cost visibility for publishers.
+Requires a decision log entry for the chosen LLM provider and integration approach. Consider rate limiting and cost visibility for publishers. This item partially overlaps with BG-031 (AI course scaffolding), which covers full course generation including exercises. Once BG-031 is built, this item's scope may be reduced to targeted in-editor exercise generation for existing lessons -- a lighter, more focused use case.

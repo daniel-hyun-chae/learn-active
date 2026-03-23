@@ -4,6 +4,7 @@ import type {
   ExerciseBlankDraft,
   ExerciseDraft,
   MultipleChoiceChoiceDraft,
+  ReorderingItemDraft,
   ExerciseStepDraft,
   LessonDraft,
   LessonContentPageDraft,
@@ -140,6 +141,14 @@ export function normalizeDraft(course: CourseDraft): CourseDraft {
     priceCents: normalizedPriceCents,
     currency: normalizedCurrency,
     stripePriceId: course.stripePriceId ?? null,
+    categoryIds: Array.from(
+      new Set((course.categoryIds ?? []).map((value) => value.trim())),
+    ).filter((value) => value.length > 0),
+    tags: Array.from(
+      new Set((course.tags ?? []).map((value) => value.trim())),
+    ).filter((value) => value.length > 0),
+    languageCode: (course.languageCode ?? 'en').toLowerCase(),
+    previewLessonId: course.previewLessonId ?? null,
     isPaid: normalizedPriceCents !== null && normalizedPriceCents > 0,
     modules: course.modules.map((module: ModuleDraft, moduleIndex: number) => ({
       ...module,
@@ -195,29 +204,45 @@ export function normalizeDraft(course: CourseDraft): CourseDraft {
                       ),
                     },
                   }
-                : {
-                    fillInBlank: {
-                      steps: (exercise.fillInBlank?.steps ?? []).map(
-                        (step: ExerciseStepDraft, stepIndex: number) => {
-                          const templateFromSegments = segmentsToBlankTemplate(
-                            step.segments,
-                          )
-                          const templateValue =
-                            typeof step.template === 'string'
-                              ? step.template
-                              : undefined
-                          const safeTemplate =
-                            templateValue ?? templateFromSegments ?? ''
-                          return {
-                            ...step,
-                            id: step.id ?? createId(`step-${stepIndex}`),
-                            template: safeTemplate,
-                            blanks: syncBlanks(safeTemplate, step.blanks),
-                          }
-                        },
-                      ),
-                    },
-                  }),
+                : exercise.type === 'REORDERING'
+                  ? {
+                      reordering: {
+                        prompt: exercise.reordering?.prompt ?? '',
+                        items: (exercise.reordering?.items ?? []).map(
+                          (item, itemIndex) => ({
+                            ...item,
+                            id:
+                              item.id ??
+                              createId(`reordering-item-${itemIndex}`),
+                            order: item.order ?? itemIndex + 1,
+                            text: item.text ?? '',
+                            isDistractor: Boolean(item.isDistractor),
+                          }),
+                        ),
+                      },
+                    }
+                  : {
+                      fillInBlank: {
+                        steps: (exercise.fillInBlank?.steps ?? []).map(
+                          (step: ExerciseStepDraft, stepIndex: number) => {
+                            const templateFromSegments =
+                              segmentsToBlankTemplate(step.segments)
+                            const templateValue =
+                              typeof step.template === 'string'
+                                ? step.template
+                                : undefined
+                            const safeTemplate =
+                              templateValue ?? templateFromSegments ?? ''
+                            return {
+                              ...step,
+                              id: step.id ?? createId(`step-${stepIndex}`),
+                              template: safeTemplate,
+                              blanks: syncBlanks(safeTemplate, step.blanks),
+                            }
+                          },
+                        ),
+                      },
+                    }),
             }),
           ),
         }),
@@ -258,12 +283,23 @@ export function reindexMultipleChoiceChoices(
   }))
 }
 
+export function reindexReorderingItems(items: ReorderingItemDraft[]) {
+  return items.map((item, index) => ({
+    ...item,
+    order: index + 1,
+  }))
+}
+
 export type CourseInputPayload = {
   id?: string
   title: string
   description: string
   priceCents?: number | null
   currency?: string
+  categoryIds?: string[]
+  tags?: string[]
+  languageCode?: string
+  previewLessonId?: string | null
   modules: Array<{
     id?: string
     title: string
@@ -297,7 +333,7 @@ export type CourseInputPayload = {
       }>
       exercises: Array<{
         id?: string
-        type: 'FILL_IN_THE_BLANK' | 'MULTIPLE_CHOICE'
+        type: 'FILL_IN_THE_BLANK' | 'MULTIPLE_CHOICE' | 'REORDERING'
         title: string
         instructions?: string
         fillInBlank?: {
@@ -330,6 +366,15 @@ export type CourseInputPayload = {
             isCorrect: boolean
           }>
         }
+        reordering?: {
+          prompt: string
+          items: Array<{
+            id?: string
+            order: number
+            text: string
+            isDistractor: boolean
+          }>
+        }
       }>
     }>
   }>
@@ -343,6 +388,10 @@ export function toCourseInput(course: CourseDraft): CourseInputPayload {
     description: normalized.description,
     priceCents: normalized.priceCents ?? null,
     currency: normalized.currency ?? 'eur',
+    categoryIds: normalized.categoryIds ?? [],
+    tags: normalized.tags ?? [],
+    languageCode: normalized.languageCode ?? 'en',
+    previewLessonId: normalized.previewLessonId ?? null,
     modules: normalized.modules.map((module) => ({
       id: module.id,
       title: module.title,
@@ -396,38 +445,52 @@ export function toCourseInput(course: CourseDraft): CourseInputPayload {
                   ),
                 },
               }
-            : {
-                fillInBlank: {
-                  steps: (exercise.fillInBlank?.steps ?? []).map((step) => {
-                    const templateValue =
-                      typeof step.template === 'string'
-                        ? step.template
-                        : undefined
-                    const safeTemplate =
-                      templateValue ??
-                      segmentsToBlankTemplate(step.segments) ??
-                      ''
-                    const blanks = syncBlanks(safeTemplate, step.blanks)
-                    return {
-                      id: step.id,
-                      order: step.order,
-                      prompt: step.prompt,
-                      threadId: step.threadId,
-                      threadTitle: step.threadTitle,
-                      segments: blankTemplateToSegments(safeTemplate, blanks),
-                      blanks: blanks.map((blank) => ({
-                        id: blank.id,
-                        correct: blank.correct,
-                        variant: blank.variant,
-                        options:
-                          blank.variant === 'OPTIONS'
-                            ? parseBlankOptions(blank.options)
-                            : undefined,
-                      })),
-                    }
-                  }),
-                },
-              }),
+            : exercise.type === 'REORDERING'
+              ? {
+                  reordering: {
+                    prompt: exercise.reordering?.prompt ?? '',
+                    items: (exercise.reordering?.items ?? []).map(
+                      (item, index) => ({
+                        id: item.id,
+                        order: item.order ?? index + 1,
+                        text: item.text,
+                        isDistractor: Boolean(item.isDistractor),
+                      }),
+                    ),
+                  },
+                }
+              : {
+                  fillInBlank: {
+                    steps: (exercise.fillInBlank?.steps ?? []).map((step) => {
+                      const templateValue =
+                        typeof step.template === 'string'
+                          ? step.template
+                          : undefined
+                      const safeTemplate =
+                        templateValue ??
+                        segmentsToBlankTemplate(step.segments) ??
+                        ''
+                      const blanks = syncBlanks(safeTemplate, step.blanks)
+                      return {
+                        id: step.id,
+                        order: step.order,
+                        prompt: step.prompt,
+                        threadId: step.threadId,
+                        threadTitle: step.threadTitle,
+                        segments: blankTemplateToSegments(safeTemplate, blanks),
+                        blanks: blanks.map((blank) => ({
+                          id: blank.id,
+                          correct: blank.correct,
+                          variant: blank.variant,
+                          options:
+                            blank.variant === 'OPTIONS'
+                              ? parseBlankOptions(blank.options)
+                              : undefined,
+                        })),
+                      }
+                    }),
+                  },
+                }),
         })),
       })),
     })),

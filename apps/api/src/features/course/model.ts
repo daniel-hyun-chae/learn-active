@@ -18,6 +18,9 @@ type FillStep = NonNullable<NormalizedExercise['fillInBlank']>['steps'][number]
 type MultipleChoiceChoice = NonNullable<
   NormalizedExercise['multipleChoice']
 >['choices'][number]
+type ReorderingItem = NonNullable<
+  NormalizedExercise['reordering']
+>['items'][number]
 
 type FillStepLegacy = {
   id?: string
@@ -129,12 +132,56 @@ function normalizeMultipleChoiceContent(
   }
 }
 
+function normalizeReorderingContent(
+  raw:
+    | {
+        prompt?: string
+        items?: Array<{
+          id?: string
+          order?: number
+          text?: string
+          isDistractor?: boolean
+        }>
+      }
+    | null
+    | undefined,
+  generateId: IdGenerator,
+): {
+  prompt: string
+  items: ReorderingItem[]
+} {
+  const items = (raw?.items ?? []).map((item, index) => ({
+    id: ensureId(generateId, item.id),
+    order: item.order ?? index + 1,
+    text: item.text ?? '',
+    isDistractor: Boolean(item.isDistractor),
+  }))
+
+  return {
+    prompt: raw?.prompt ?? '',
+    items,
+  }
+}
+
 function normalizeExerciseContent(
   exerciseInput: NonNullable<
     CourseInput['modules'][number]['lessons'][number]['exercises'][number]
   >,
   generateId: IdGenerator,
 ): NormalizedExercise {
+  if (exerciseInput.type === 'REORDERING') {
+    return {
+      id: ensureId(generateId, exerciseInput.id),
+      type: ExerciseType.REORDERING,
+      title: exerciseInput.title,
+      instructions: exerciseInput.instructions,
+      reordering: normalizeReorderingContent(
+        exerciseInput.reordering,
+        generateId,
+      ),
+    }
+  }
+
   if (exerciseInput.type === 'MULTIPLE_CHOICE') {
     return {
       id: ensureId(generateId, exerciseInput.id),
@@ -166,9 +213,48 @@ function normalizeExerciseContent(
 function normalizeExerciseForRead(exercise: unknown): NormalizedExercise {
   const source = (exercise ?? {}) as Record<string, unknown>
   const type =
-    source.type === ExerciseType.MULTIPLE_CHOICE
-      ? ExerciseType.MULTIPLE_CHOICE
-      : ExerciseType.FILL_IN_THE_BLANK
+    source.type === ExerciseType.REORDERING
+      ? ExerciseType.REORDERING
+      : source.type === ExerciseType.MULTIPLE_CHOICE
+        ? ExerciseType.MULTIPLE_CHOICE
+        : ExerciseType.FILL_IN_THE_BLANK
+
+  if (type === ExerciseType.REORDERING) {
+    const reordering =
+      (source.reordering as
+        | {
+            prompt?: string
+            items?: Array<{
+              id?: string
+              order?: number
+              text?: string
+              isDistractor?: boolean
+            }>
+          }
+        | undefined) ?? {}
+
+    return {
+      id: String(source.id ?? ''),
+      type,
+      title: String(source.title ?? ''),
+      instructions:
+        typeof source.instructions === 'string'
+          ? source.instructions
+          : undefined,
+      reordering: {
+        prompt: String(reordering.prompt ?? ''),
+        items: (reordering.items ?? []).map((item, index) => ({
+          id: String(item.id ?? `item-${index + 1}`),
+          order:
+            typeof item.order === 'number' && Number.isFinite(item.order)
+              ? item.order
+              : index + 1,
+          text: String(item.text ?? ''),
+          isDistractor: Boolean(item.isDistractor),
+        })),
+      },
+    }
+  }
 
   if (type === ExerciseType.MULTIPLE_CHOICE) {
     const multipleChoice =
@@ -288,6 +374,10 @@ export type PublisherCourseRecord = {
   priceCents: number | null
   currency: string
   stripePriceId: string | null
+  categoryIds?: string[]
+  tags?: string[]
+  languageCode?: string
+  previewLessonId?: string | null
   versionId: string
   version: number
   status: 'draft' | 'published' | 'archived'
@@ -299,6 +389,7 @@ export type PublisherCourseRecord = {
   createdBy: string
   publishedAt: string | null
   archivedAt?: string | null
+  resumePosition?: LearnerResumePositionRecord | null
 }
 
 export type PublicCourseRecord = {
@@ -310,6 +401,13 @@ export type PublicCourseRecord = {
   currency: string
   stripePriceId: string | null
   isPaid: boolean
+  categoryIds?: string[]
+  tags?: string[]
+  languageCode?: string
+  previewLessonId?: string | null
+  enrollmentCount?: number
+  popularityScore?: number
+  modules?: Course['modules']
   ownerDisplayName?: string
 }
 
@@ -318,6 +416,20 @@ export type EnrollmentRecord = {
   courseId: string
   status: string
   enrolledAt: string
+  lastVisitedLessonId: string | null
+  lastVisitedBlock: 'summary' | 'contentPage' | 'exercise' | null
+  lastVisitedContentPageId: string | null
+  lastVisitedExerciseId: string | null
+  lastVisitedAt: string | null
+}
+
+export type LearnerResumePositionRecord = {
+  courseId: string
+  lessonId: string
+  block: 'summary' | 'contentPage' | 'exercise'
+  contentPageId: string | null
+  exerciseId: string | null
+  visitedAt: string
 }
 
 export type PaymentRecord = {
@@ -426,6 +538,10 @@ export function normalizeCourseInput(
   description: string
   priceCents: number | null
   currency: string
+  categoryIds: string[]
+  tags: string[]
+  languageCode: string
+  previewLessonId: string | null
   content: CourseContent
 } {
   const modules = (input.modules ?? []).map((moduleInput, moduleIndex) => ({
@@ -476,6 +592,18 @@ export function normalizeCourseInput(
         ? Math.max(0, Math.floor(input.priceCents))
         : null,
     currency: (input.currency ?? 'eur').toLowerCase(),
+    categoryIds: Array.from(
+      new Set((input.categoryIds ?? []).map((value) => value.trim())),
+    ).filter((value) => value.length > 0),
+    tags: Array.from(new Set((input.tags ?? []).map((value) => value.trim())))
+      .filter((value) => value.length > 0)
+      .slice(0, 25),
+    languageCode: (input.languageCode ?? 'en').trim().toLowerCase() || 'en',
+    previewLessonId:
+      typeof input.previewLessonId === 'string' &&
+      input.previewLessonId.trim().length > 0
+        ? input.previewLessonId.trim()
+        : null,
     content: { modules },
   }
 }
@@ -494,11 +622,16 @@ export function mapPublisherCourseToCourse(
     currency: record.currency,
     stripePriceId: record.stripePriceId,
     isPaid: typeof record.priceCents === 'number' && record.priceCents > 0,
+    categoryIds: record.categoryIds ?? [],
+    tags: record.tags ?? [],
+    languageCode: record.languageCode ?? 'en',
+    previewLessonId: record.previewLessonId ?? null,
     changeNote: record.changeNote ?? null,
     createdAt: record.createdAt,
     createdBy: record.createdBy,
     publishedAt: record.publishedAt,
     archivedAt: record.archivedAt ?? null,
+    resumePosition: record.resumePosition ?? null,
     modules: normalizeModulesForRead(record.content.modules),
   }
 }

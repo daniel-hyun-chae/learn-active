@@ -8,6 +8,10 @@ export type CourseDraft = {
   priceCents?: number | null
   currency?: string
   stripePriceId?: string | null
+  categoryIds?: string[]
+  tags?: string[]
+  languageCode?: string
+  previewLessonId?: string | null
   isPaid?: boolean
   changeNote?: string | null
   createdAt?: string
@@ -77,13 +81,14 @@ export type ContentDraft = {
 
 export type ExerciseDraft = {
   id?: string
-  type: 'FILL_IN_THE_BLANK' | 'MULTIPLE_CHOICE'
+  type: 'FILL_IN_THE_BLANK' | 'MULTIPLE_CHOICE' | 'REORDERING'
   title: string
   instructions?: string
   fillInBlank?: {
     steps: ExerciseStepDraft[]
   }
   multipleChoice?: MultipleChoiceExerciseDraft
+  reordering?: ReorderingExerciseDraft
 }
 
 export type MultipleChoiceExerciseDraft = {
@@ -97,6 +102,18 @@ export type MultipleChoiceChoiceDraft = {
   order: number
   text: string
   isCorrect: boolean
+}
+
+export type ReorderingExerciseDraft = {
+  prompt: string
+  items: ReorderingItemDraft[]
+}
+
+export type ReorderingItemDraft = {
+  id?: string
+  order: number
+  text: string
+  isDistractor: boolean
 }
 
 export type ExerciseStepDraft = {

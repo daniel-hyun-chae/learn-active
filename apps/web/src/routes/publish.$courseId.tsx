@@ -30,6 +30,10 @@ export const Route = createFileRoute('/publish/$courseId')({
           priceCents
           currency
           stripePriceId
+          categoryIds
+          tags
+          languageCode
+          previewLessonId
           isPaid
           changeNote
           createdAt
@@ -75,6 +79,15 @@ export const Route = createFileRoute('/publish/$courseId')({
                     order
                     text
                     isCorrect
+                  }
+                }
+                reordering {
+                  prompt
+                  items {
+                    id
+                    order
+                    text
+                    isDistractor
                   }
                 }
               }

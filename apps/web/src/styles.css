@@ -785,6 +785,31 @@ a {
   box-shadow: 0 0 0 1px var(--color-accent);
 }
 
+.reordering-list {
+  display: grid;
+  gap: var(--spacing-sm);
+}
+
+.reordering-item {
+  border: var(--border-width-sm) solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm);
+  background: var(--color-background);
+  display: grid;
+  gap: var(--spacing-xs);
+}
+
+.reordering-item:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.reordering-item-actions {
+  display: flex;
+  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+}
+
 .exercise-actions {
   margin-top: var(--spacing-lg);
 }

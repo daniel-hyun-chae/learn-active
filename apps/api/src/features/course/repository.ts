@@ -4,6 +4,7 @@ import type {
   CourseProgressRecord,
   LearnerExerciseAttemptRecord,
   LearnerExerciseAttemptHistoryRecord,
+  LearnerResumePositionRecord,
   ModuleProgressRecord,
   LessonProgressRecord,
   ExerciseAttemptStatusRecord,
@@ -13,7 +14,10 @@ import type {
   PublisherCourseRecord,
 } from './model.js'
 import { isActivelyEnrolled } from './model.js'
-import type { CourseRepository } from './repository-contract.js'
+import type {
+  CourseRepository,
+  PublicPreviewLessonRecord,
+} from './repository-contract.js'
 import {
   createNodePostgresCourseRepository,
   createWorkerSupabaseCourseRepositoryImpl,
@@ -29,6 +33,10 @@ type CourseIdentity = {
   priceCents: number | null
   currency: string
   stripePriceId: string | null
+  categoryIds: string[]
+  tags: string[]
+  languageCode: string
+  previewLessonId: string | null
 }
 
 type CourseVersion = {
@@ -50,6 +58,20 @@ type EnrollmentRow = EnrollmentRecord
 type PaymentRow = PaymentRecord
 
 export type { CourseRepository, CourseWriteRow } from './repository-contract.js'
+
+function findPreviewLesson(
+  course: PublicCourseRecord,
+): PublicPreviewLessonRecord['lesson'] | null {
+  if (!course.previewLessonId) {
+    return null
+  }
+
+  return (
+    (course.modules ?? [])
+      .flatMap((module) => module.lessons)
+      .find((lesson) => lesson.id === course.previewLessonId) ?? null
+  )
+}
 
 function slugify(input: string): string {
   const base = input
@@ -102,6 +124,10 @@ function buildInitialState(): MemoryState {
     priceCents: null,
     currency: 'eur',
     stripePriceId: null,
+    categoryIds: seedCourseRow.categoryIds,
+    tags: seedCourseRow.tags,
+    languageCode: seedCourseRow.languageCode,
+    previewLessonId: seedCourseRow.previewLessonId,
   })
   state.versions.set(versionId, {
     id: versionId,
@@ -282,28 +308,56 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
     return version ? clone(version) : null
   }
 
-  function mapPublisherRecord(
-    course: CourseIdentity,
-    version: CourseVersion,
-  ): PublisherCourseRecord {
+  function mapPublisherRecord(args: {
+    course: CourseIdentity
+    version: CourseVersion
+    resumePosition?: LearnerResumePositionRecord | null
+  }): PublisherCourseRecord {
     return {
-      courseId: course.id,
-      slug: course.slug,
-      ownerId: course.ownerId,
-      priceCents: course.priceCents,
-      currency: course.currency,
-      stripePriceId: course.stripePriceId,
-      versionId: version.id,
-      version: version.version,
-      status: version.status,
-      title: version.title,
-      description: version.description,
-      content: clone(version.content),
-      changeNote: version.changeNote,
-      createdAt: version.createdAt,
-      createdBy: version.createdBy,
-      publishedAt: version.publishedAt,
-      archivedAt: version.archivedAt,
+      courseId: args.course.id,
+      slug: args.course.slug,
+      ownerId: args.course.ownerId,
+      priceCents: args.course.priceCents,
+      currency: args.course.currency,
+      stripePriceId: args.course.stripePriceId,
+      versionId: args.version.id,
+      categoryIds: args.course.categoryIds,
+      tags: args.course.tags,
+      languageCode: args.course.languageCode,
+      previewLessonId: args.course.previewLessonId,
+      version: args.version.version,
+      status: args.version.status,
+      title: args.version.title,
+      description: args.version.description,
+      content: clone(args.version.content),
+      changeNote: args.version.changeNote,
+      createdAt: args.version.createdAt,
+      createdBy: args.version.createdBy,
+      publishedAt: args.version.publishedAt,
+      archivedAt: args.version.archivedAt,
+      resumePosition: args.resumePosition ?? null,
+    }
+  }
+
+  function toResumePositionRecord(args: {
+    courseId: string
+    enrollment: EnrollmentRow
+  }): LearnerResumePositionRecord | null {
+    if (
+      !args.enrollment.lastVisitedAt ||
+      !args.enrollment.lastVisitedLessonId ||
+      !args.enrollment.lastVisitedBlock
+    ) {
+      return null
+    }
+
+    return {
+      courseId: args.courseId,
+      lessonId: args.enrollment.lastVisitedLessonId,
+      block: args.enrollment.lastVisitedBlock,
+      contentPageId: args.enrollment.lastVisitedContentPageId,
+      exerciseId: args.enrollment.lastVisitedExerciseId,
+      visitedAt: args.enrollment.lastVisitedAt,
     }
   }
 
@@ -336,11 +390,11 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
 
     const draft = latestDraftForCourse(course.id)
     if (draft) {
-      return mapPublisherRecord(course, draft)
+      return mapPublisherRecord({ course, version: draft })
     }
 
     const published = publishedForCourse(course.id)
-    return published ? mapPublisherRecord(course, published) : null
+    return published ? mapPublisherRecord({ course, version: published }) : null
   }
 
   async function createDraftFromPublishedInternal(args: {
@@ -352,7 +406,7 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
 
     const existingDraft = latestDraftForCourse(course.id)
     if (existingDraft) {
-      return mapPublisherRecord(course, existingDraft)
+      return mapPublisherRecord({ course, version: existingDraft })
     }
 
     const published = publishedForCourse(course.id)
@@ -375,7 +429,7 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
     }
 
     state.versions.set(draft.id, draft)
-    return mapPublisherRecord(course, draft)
+    return mapPublisherRecord({ course, version: draft })
   }
 
   return {
@@ -385,13 +439,47 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
 
     provisionPersonalOwner,
 
-    async listPublicCourses() {
+    async listPublicCourses(query) {
       const rows: PublicCourseRecord[] = []
+      const search = query?.search?.trim().toLowerCase() ?? ''
+      const categoryIds = new Set(query?.categoryIds ?? [])
+      const languageCodes = new Set(query?.languageCodes ?? [])
+      const priceFilter = query?.priceFilter ?? 'all'
       for (const course of state.courses.values()) {
         const published = publishedForCourse(course.id)
         if (!published) {
           continue
         }
+        if (
+          search.length > 0 &&
+          !`${published.title} ${published.description}`
+            .toLowerCase()
+            .includes(search)
+        ) {
+          continue
+        }
+        if (
+          categoryIds.size > 0 &&
+          !course.categoryIds.some((categoryId) => categoryIds.has(categoryId))
+        ) {
+          continue
+        }
+        if (languageCodes.size > 0 && !languageCodes.has(course.languageCode)) {
+          continue
+        }
+        const isPaid =
+          typeof course.priceCents === 'number' && course.priceCents > 0
+        if (priceFilter === 'free' && isPaid) {
+          continue
+        }
+        if (priceFilter === 'paid' && !isPaid) {
+          continue
+        }
+        const enrollmentCount = Array.from(state.enrollments.values()).filter(
+          (enrollment) =>
+            enrollment.courseId === course.id &&
+            isActivelyEnrolled(enrollment.status),
+        ).length
         rows.push({
           id: course.id,
           slug: course.slug,
@@ -400,12 +488,83 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
           priceCents: course.priceCents,
           currency: course.currency,
           stripePriceId: course.stripePriceId,
-          isPaid:
-            typeof course.priceCents === 'number' && course.priceCents > 0,
+          isPaid,
+          categoryIds: course.categoryIds,
+          tags: course.tags,
+          languageCode: course.languageCode,
+          previewLessonId: course.previewLessonId,
+          enrollmentCount,
+          popularityScore: enrollmentCount,
           ownerDisplayName: undefined,
         })
       }
-      return rows.sort((a, b) => a.title.localeCompare(b.title))
+
+      const filtered = rows.filter((course) => {
+        const search = query?.search?.trim().toLowerCase() ?? ''
+        if (
+          search.length > 0 &&
+          !`${course.title} ${course.description}`
+            .toLowerCase()
+            .includes(search)
+        ) {
+          return false
+        }
+
+        const categoryFilter = query?.categoryIds ?? []
+        if (
+          categoryFilter.length > 0 &&
+          !(course.categoryIds ?? []).some((categoryId) =>
+            categoryFilter.includes(categoryId),
+          )
+        ) {
+          return false
+        }
+
+        const languageFilter = query?.languageCodes ?? []
+        if (
+          languageFilter.length > 0 &&
+          !languageFilter.includes((course.languageCode ?? 'en').toLowerCase())
+        ) {
+          return false
+        }
+
+        const priceFilter = query?.priceFilter ?? 'all'
+        if (priceFilter === 'free' && course.isPaid) {
+          return false
+        }
+        if (priceFilter === 'paid' && !course.isPaid) {
+          return false
+        }
+
+        return true
+      })
+
+      if ((query?.sort ?? 'popular') === 'title') {
+        return filtered
+          .sort((a, b) => a.title.localeCompare(b.title))
+          .slice(
+            0,
+            query?.limit && query.limit > 0
+              ? Math.floor(query.limit)
+              : filtered.length,
+          )
+      }
+
+      return filtered
+        .sort((a, b) => {
+          const aScore = a.popularityScore ?? 0
+          const bScore = b.popularityScore ?? 0
+          if (bScore !== aScore) {
+            return bScore - aScore
+          }
+          return a.title.localeCompare(b.title)
+        })
+        .slice(
+          0,
+          query?.limit && query.limit > 0
+            ? Math.floor(query.limit)
+            : filtered.length,
+        )
     },
 
     async getPublicCourseById(id) {
@@ -426,6 +585,21 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
         currency: course.currency,
         stripePriceId: course.stripePriceId,
         isPaid: typeof course.priceCents === 'number' && course.priceCents > 0,
+        categoryIds: course.categoryIds,
+        tags: course.tags,
+        languageCode: course.languageCode,
+        previewLessonId: course.previewLessonId,
+        enrollmentCount: Array.from(state.enrollments.values()).filter(
+          (enrollment) =>
+            enrollment.courseId === course.id &&
+            isActivelyEnrolled(enrollment.status),
+        ).length,
+        popularityScore: Array.from(state.enrollments.values()).filter(
+          (enrollment) =>
+            enrollment.courseId === course.id &&
+            isActivelyEnrolled(enrollment.status),
+        ).length,
+        modules: published.content.modules,
         ownerDisplayName: undefined,
       }
     },
@@ -450,7 +624,39 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
         currency: course.currency,
         stripePriceId: course.stripePriceId,
         isPaid: typeof course.priceCents === 'number' && course.priceCents > 0,
+        categoryIds: course.categoryIds,
+        tags: course.tags,
+        languageCode: course.languageCode,
+        previewLessonId: course.previewLessonId,
+        enrollmentCount: Array.from(state.enrollments.values()).filter(
+          (enrollment) =>
+            enrollment.courseId === course.id &&
+            isActivelyEnrolled(enrollment.status),
+        ).length,
+        popularityScore: Array.from(state.enrollments.values()).filter(
+          (enrollment) =>
+            enrollment.courseId === course.id &&
+            isActivelyEnrolled(enrollment.status),
+        ).length,
+        modules: published.content.modules,
         ownerDisplayName: undefined,
+      }
+    },
+
+    async getPublicPreviewLessonBySlug(slug) {
+      const publicCourse = await this.getPublicCourseBySlug(slug)
+      if (!publicCourse) {
+        return null
+      }
+
+      const lesson = findPreviewLesson(publicCourse)
+      if (!lesson) {
+        return null
+      }
+
+      return {
+        course: publicCourse,
+        lesson,
       }
     },
 
@@ -475,9 +681,52 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
         courseId,
         status: 'active',
         enrolledAt: nowIso(),
+        lastVisitedLessonId: null,
+        lastVisitedBlock: null,
+        lastVisitedContentPageId: null,
+        lastVisitedExerciseId: null,
+        lastVisitedAt: null,
       }
       state.enrollments.set(key, enrollment)
       return clone(enrollment)
+    },
+
+    async upsertLearnerResumePosition({
+      userId,
+      courseId,
+      lessonId,
+      block,
+      contentPageId,
+      exerciseId,
+    }) {
+      const key = `${userId}:${courseId}`
+      const enrollment = state.enrollments.get(key)
+      if (!enrollment) {
+        throw new Error('Course is not available to this learner.')
+      }
+
+      const visitedAt = nowIso()
+      const updated: EnrollmentRow = {
+        ...enrollment,
+        lastVisitedLessonId: lessonId,
+        lastVisitedBlock: block,
+        lastVisitedContentPageId:
+          block === 'contentPage' ? (contentPageId ?? null) : null,
+        lastVisitedExerciseId:
+          block === 'exercise' ? (exerciseId ?? null) : null,
+        lastVisitedAt: visitedAt,
+      }
+
+      state.enrollments.set(key, updated)
+
+      return {
+        courseId,
+        lessonId,
+        block,
+        contentPageId: updated.lastVisitedContentPageId,
+        exerciseId: updated.lastVisitedExerciseId,
+        visitedAt,
+      }
     },
 
     async listMyPayments({ userId }) {
@@ -546,15 +795,38 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
     },
 
     async listLearnerCourses({ userId }) {
-      const my = await this.listMyCourses({ userId })
-      return my
-        .map((entry) => {
-          const version = publishedForCourse(entry.id)
-          const course = state.courses.get(entry.id)
+      const activeEnrollments = Array.from(state.enrollments.entries())
+        .filter(([key, enrollment]) => {
+          if (!key.startsWith(`${userId}:`)) {
+            return false
+          }
+          return isActivelyEnrolled(enrollment.status)
+        })
+        .map(([, enrollment]) => clone(enrollment))
+        .sort((a, b) => {
+          const aTime = a.lastVisitedAt ?? a.enrolledAt
+          const bTime = b.lastVisitedAt ?? b.enrolledAt
+          return bTime.localeCompare(aTime)
+        })
+
+      return activeEnrollments
+        .map((enrollment) => {
+          const version = publishedForCourse(enrollment.courseId)
+          const course = state.courses.get(enrollment.courseId)
           if (!version || !course) {
             return null
           }
-          return mapPublisherRecord(course, version)
+
+          const resumePosition = toResumePositionRecord({
+            courseId: enrollment.courseId,
+            enrollment,
+          })
+
+          return mapPublisherRecord({
+            course,
+            version,
+            resumePosition,
+          })
         })
         .filter((row): row is PublisherCourseRecord => Boolean(row))
     },
@@ -570,7 +842,16 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
         return null
       }
       const published = publishedForCourse(id)
-      return published ? mapPublisherRecord(course, published) : null
+      if (!published) {
+        return null
+      }
+
+      const resumePosition = toResumePositionRecord({
+        courseId: id,
+        enrollment,
+      })
+
+      return mapPublisherRecord({ course, version: published, resumePosition })
     },
 
     async upsertLearnerExerciseAttempt({
@@ -671,7 +952,7 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
         if (!selected) {
           continue
         }
-        rows.push(mapPublisherRecord(course, selected))
+        rows.push(mapPublisherRecord({ course, version: selected }))
       }
 
       return rows.sort((a, b) => b.version - a.version)
@@ -704,6 +985,10 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
           priceCents: row.priceCents,
           currency: row.currency,
           stripePriceId: row.stripePriceId,
+          categoryIds: row.categoryIds ?? [],
+          tags: row.tags ?? [],
+          languageCode: row.languageCode ?? 'en',
+          previewLessonId: row.previewLessonId,
         }
         state.courses.set(identity.id, identity)
 
@@ -722,7 +1007,7 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
           archivedAt: null,
         }
         state.versions.set(version.id, version)
-        return mapPublisherRecord(identity, version)
+        return mapPublisherRecord({ course: identity, version })
       }
 
       if (existingCourse.ownerId !== ownerId) {
@@ -732,6 +1017,10 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
       existingCourse.priceCents = row.priceCents
       existingCourse.currency = row.currency
       existingCourse.stripePriceId = row.stripePriceId
+      existingCourse.categoryIds = row.categoryIds ?? []
+      existingCourse.tags = row.tags ?? []
+      existingCourse.languageCode = row.languageCode ?? 'en'
+      existingCourse.previewLessonId = row.previewLessonId
       state.courses.set(existingCourse.id, existingCourse)
 
       const draft = latestDraftForCourse(existingCourse.id)
@@ -759,7 +1048,7 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
       target.content = clone(row.content)
       state.versions.set(target.id, target)
 
-      return mapPublisherRecord(existingCourse, target)
+      return mapPublisherRecord({ course: existingCourse, version: target })
     },
 
     async seedPublisherSampleCourse({ userId, email, row }) {
@@ -794,7 +1083,7 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
       state.versions.set(draft.id, draft)
       state.publicationByCourse.set(courseId, draft.id)
 
-      return mapPublisherRecord(course, draft)
+      return mapPublisherRecord({ course, version: draft })
     },
 
     async restoreVersionAsDraft({ userId, email, courseId, versionId }) {
@@ -823,7 +1112,7 @@ function createRepositoryFromState(state: MemoryState): CourseRepository {
       }
 
       state.versions.set(restored.id, restored)
-      return mapPublisherRecord(course, restored)
+      return mapPublisherRecord({ course, version: restored })
     },
 
     async listCourseVersionHistory({ userId, email, courseId }) {

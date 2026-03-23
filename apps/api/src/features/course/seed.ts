@@ -10,6 +10,10 @@ type SeedCourse = {
   id: string
   title: string
   description: string
+  categoryIds: string[]
+  tags: string[]
+  languageCode: string
+  previewLessonId: string | null
   modules: CourseContent['modules']
 }
 
@@ -19,6 +23,10 @@ export const courses: SeedCourse[] = [
     title: 'Deutsch B1: Alltag und Beruf im Gesprach',
     description:
       'Ein realistischer B1-Kurs mit Dialogen aus Alltag und Beruf: Termine, Problemlosung, Meinungen und formelle Kommunikation.',
+    categoryIds: ['language'],
+    tags: ['german', 'b1', 'conversation'],
+    languageCode: 'de',
+    previewLessonId: 'lesson-b1-terminplanung',
     modules: [
       {
         id: 'module-b1-kommunikation',
@@ -238,6 +246,49 @@ export const courses: SeedCourse[] = [
                       order: 4,
                       text: 'Passt schon, ich melde mich irgendwann.',
                       isCorrect: false,
+                    },
+                  ],
+                },
+              },
+              {
+                id: 'exercise-b1-termin-reordering-1',
+                type: ExerciseType.REORDERING,
+                title: 'Satzreihenfolge: Termin bestaetigen',
+                instructions:
+                  'Ordnen Sie die Bausteine zu einem formellen Bestatigungssatz.',
+                reordering: {
+                  prompt:
+                    'Ordnen Sie die folgenden Bausteine. Ein Baustein ist ein Distraktor.',
+                  items: [
+                    {
+                      id: 'reordering-item-b1-termin-1',
+                      order: 1,
+                      text: 'Hiermit',
+                      isDistractor: false,
+                    },
+                    {
+                      id: 'reordering-item-b1-termin-2',
+                      order: 2,
+                      text: 'bestatige ich',
+                      isDistractor: false,
+                    },
+                    {
+                      id: 'reordering-item-b1-termin-3',
+                      order: 3,
+                      text: 'den Termin',
+                      isDistractor: false,
+                    },
+                    {
+                      id: 'reordering-item-b1-termin-4',
+                      order: 4,
+                      text: 'am Freitag um 9 Uhr.',
+                      isDistractor: false,
+                    },
+                    {
+                      id: 'reordering-item-b1-termin-5',
+                      order: 5,
+                      text: 'vielleicht',
+                      isDistractor: true,
                     },
                   ],
                 },
@@ -531,5 +582,9 @@ export const seedCourseRow = {
   ownerId: '__seed_owner__',
   title: courses[0].title,
   description: courses[0].description,
+  categoryIds: courses[0].categoryIds,
+  tags: courses[0].tags,
+  languageCode: courses[0].languageCode,
+  previewLessonId: courses[0].previewLessonId,
   content: seedCourseContent,
 }

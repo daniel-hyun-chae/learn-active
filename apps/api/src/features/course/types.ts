@@ -8,6 +8,7 @@ export enum ContentType {
 export enum ExerciseType {
   FILL_IN_THE_BLANK = 'FILL_IN_THE_BLANK',
   MULTIPLE_CHOICE = 'MULTIPLE_CHOICE',
+  REORDERING = 'REORDERING',
 }
 
 export enum SegmentType {
@@ -137,6 +138,30 @@ export class MultipleChoiceExerciseContent {
 }
 
 @ObjectType()
+export class ReorderingItem {
+  @Field(() => ID)
+  id!: string
+
+  @Field(() => Int)
+  order!: number
+
+  @Field(() => String)
+  text!: string
+
+  @Field(() => Boolean)
+  isDistractor!: boolean
+}
+
+@ObjectType()
+export class ReorderingExerciseContent {
+  @Field(() => String)
+  prompt!: string
+
+  @Field(() => [ReorderingItem])
+  items!: ReorderingItem[]
+}
+
+@ObjectType()
 export class Exercise {
   @Field(() => ID)
   id!: string
@@ -155,6 +180,9 @@ export class Exercise {
 
   @Field(() => MultipleChoiceExerciseContent, { nullable: true })
   multipleChoice?: MultipleChoiceExerciseContent
+
+  @Field(() => ReorderingExerciseContent, { nullable: true })
+  reordering?: ReorderingExerciseContent
 }
 
 @ObjectType()
@@ -243,6 +271,18 @@ export class Course {
   @Field(() => Boolean)
   isPaid!: boolean
 
+  @Field(() => [String])
+  categoryIds!: string[]
+
+  @Field(() => [String])
+  tags!: string[]
+
+  @Field(() => String)
+  languageCode!: string
+
+  @Field(() => String, { nullable: true })
+  previewLessonId?: string | null
+
   @Field(() => String, { nullable: true })
   changeNote?: string | null
 
@@ -257,6 +297,9 @@ export class Course {
 
   @Field(() => String, { nullable: true })
   archivedAt?: string | null
+
+  @Field(() => LearnerResumePosition, { nullable: true })
+  resumePosition?: LearnerResumePosition | null
 
   @Field(() => [Module])
   modules!: Module[]
@@ -467,6 +510,27 @@ export class CourseProgress {
 }
 
 @ObjectType()
+export class LearnerResumePosition {
+  @Field(() => ID)
+  courseId!: string
+
+  @Field(() => String)
+  lessonId!: string
+
+  @Field(() => String)
+  block!: 'summary' | 'contentPage' | 'exercise'
+
+  @Field(() => String, { nullable: true })
+  contentPageId!: string | null
+
+  @Field(() => String, { nullable: true })
+  exerciseId!: string | null
+
+  @Field(() => String)
+  visitedAt!: string
+}
+
+@ObjectType()
 export class PublicCourse {
   @Field(() => ID)
   id!: string
@@ -489,8 +553,38 @@ export class PublicCourse {
   @Field(() => Boolean)
   isPaid!: boolean
 
+  @Field(() => [String])
+  categoryIds!: string[]
+
+  @Field(() => [String])
+  tags!: string[]
+
+  @Field(() => String)
+  languageCode!: string
+
+  @Field(() => String, { nullable: true })
+  previewLessonId?: string | null
+
+  @Field(() => Int)
+  enrollmentCount!: number
+
+  @Field(() => Int)
+  popularityScore!: number
+
+  @Field(() => [Module], { nullable: true })
+  modules?: Module[]
+
   @Field(() => String, { nullable: true })
   ownerDisplayName?: string
+}
+
+@ObjectType()
+export class PublicPreviewLesson {
+  @Field(() => PublicCourse)
+  course!: PublicCourse
+
+  @Field(() => Lesson)
+  lesson!: Lesson
 }
 
 @ObjectType()
