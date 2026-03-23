@@ -79,6 +79,10 @@ function PublisherLandingRoute() {
             id
             title
             description
+            categoryIds
+            tags
+            languageCode
+            previewLessonId
           }
         }`,
         { input },

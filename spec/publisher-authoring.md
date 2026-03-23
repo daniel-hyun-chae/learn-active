@@ -16,7 +16,7 @@ Publishers create multi-module courses with lessons and exercises. The `/publish
 - Fill-in-the-blank builder supports [blank] templates with per-blank typing or options configuration.
 - Publishers can trigger a seed action to restore the sample course.
 - Publishers can preview the learner experience for the full course or the selected section with unsaved edits.
-- Seed course content is realistic and exercises currently supported content/exercise capabilities (text, image, content pages, fill-in-the-blank, single-choice and multi-select multiple-choice).
+- Seed course content is realistic and exercises currently supported content/exercise capabilities (text, image, content pages, fill-in-the-blank, single-choice and multi-select multiple-choice, and reordering).
 
 ## Persistence and structure management
 
@@ -106,17 +106,19 @@ Node and worker runtimes use real database-backed repository adapters by default
 - Local dev and e2e startup provide worker runtime SUPABASE_SERVICE_ROLE_KEY.
 - Runtime service initialization ensures idempotent system seed provisioning for local and staging environments.
 
-## Exercise type abstraction and multiple-choice authoring
+## Exercise type abstraction with multiple-choice and reordering authoring
 
 Publisher authoring supports a discriminated exercise model with multiple types.
 
 ### Behaviors
 
-- Exercise authoring uses explicit type discriminator (FILL_IN_THE_BLANK, MULTIPLE_CHOICE) with type-specific payload fields.
+- Exercise authoring uses explicit type discriminator (FILL_IN_THE_BLANK, MULTIPLE_CHOICE, REORDERING) with type-specific payload fields.
 - Fill-in-the-blank content is stored under fillInBlank.steps and editable through template and blank controls.
 - Multiple-choice content is stored under multipleChoice with question, allowsMultiple, and ordered choices.
+- Reordering content is stored under reordering with prompt and ordered items, where each item can be marked as a distractor.
 - Publisher exercise editor includes type switching and preserves valid type-specific defaults.
 - Multiple-choice authoring supports add, edit, reorder, and delete choices plus correct-choice toggling.
+- Reordering authoring supports add, edit, reorder, and delete item controls plus distractor toggling.
 - Publisher preview renders exercise output based on selected exercise type.
 
 ## Validation feedback and publish guardrails

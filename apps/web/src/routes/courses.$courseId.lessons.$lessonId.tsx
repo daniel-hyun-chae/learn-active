@@ -1,5 +1,5 @@
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LessonView } from '../features/learners/course/LessonView'
 import type {
@@ -178,6 +178,15 @@ export const Route = createFileRoute('/courses/$courseId/lessons/$lessonId')({
                     isCorrect
                   }
                 }
+                reordering {
+                  prompt
+                  items {
+                    id
+                    order
+                    text
+                    isDistractor
+                  }
+                }
               }
             }
           }
@@ -274,12 +283,78 @@ function LessonRoute() {
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyError, setHistoryError] = useState<string | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const lastResumeMutationKeyRef = useRef<string>('')
 
   const reviewModeEnabled = review === 'mistakes'
 
   if (!lesson) {
     return <p className="muted">{t('learners.lesson.notFound')}</p>
   }
+
+  useEffect(() => {
+    const normalizedBlock: 'summary' | 'contentPage' | 'exercise' =
+      block === 'contentPage'
+        ? 'contentPage'
+        : block === 'exercise'
+          ? 'exercise'
+          : 'summary'
+
+    const normalizedContentPageId =
+      normalizedBlock === 'contentPage' ? (contentPageId ?? null) : null
+    const normalizedExerciseId =
+      normalizedBlock === 'exercise' ? (exerciseId ?? null) : null
+
+    if (normalizedBlock === 'contentPage' && !normalizedContentPageId) {
+      return
+    }
+    if (normalizedBlock === 'exercise' && !normalizedExerciseId) {
+      return
+    }
+
+    const mutationKey = [
+      courseId,
+      lessonId,
+      normalizedBlock,
+      normalizedContentPageId ?? '',
+      normalizedExerciseId ?? '',
+    ].join('|')
+
+    if (lastResumeMutationKeyRef.current === mutationKey) {
+      return
+    }
+    lastResumeMutationKeyRef.current = mutationKey
+
+    void fetchGraphQL<{
+      upsertLearnerResumePosition: {
+        courseId: string
+        lessonId: string
+      }
+    }>(
+      `mutation UpsertLearnerResumePosition($input: LearnerResumePositionInput!) {
+        upsertLearnerResumePosition(input: $input) {
+          courseId
+          lessonId
+        }
+      }`,
+      {
+        input: {
+          courseId,
+          lessonId,
+          block: normalizedBlock,
+          contentPageId: normalizedContentPageId,
+          exerciseId: normalizedExerciseId,
+        },
+      },
+    ).catch(() => {
+      lastResumeMutationKeyRef.current = ''
+    })
+  }, [courseId, lessonId, block, contentPageId, exerciseId])
+
+  useEffect(() => {
+    return () => {
+      lastResumeMutationKeyRef.current = ''
+    }
+  }, [courseId, lessonId])
 
   const lessonProgress =
     progress?.modules
@@ -470,6 +545,41 @@ function LessonRoute() {
       : block === 'exercise' && exerciseId
         ? { type: 'exercise' as const, exerciseId }
         : ({ type: 'summary' } as const)
+
+  useEffect(() => {
+    if (!lesson) {
+      return
+    }
+
+    if (lessonSelection.type === 'contentPage') {
+      const exists = lesson.contentPages.some(
+        (page) => page.id === lessonSelection.contentPageId,
+      )
+      if (!exists) {
+        void router.navigate({
+          to: '/courses/$courseId/lessons/$lessonId',
+          params: { courseId, lessonId },
+          search: buildSearch({ block: 'summary' }),
+          replace: true,
+        })
+      }
+      return
+    }
+
+    if (lessonSelection.type === 'exercise') {
+      const exists = lesson.exercises.some(
+        (exercise) => exercise.id === lessonSelection.exerciseId,
+      )
+      if (!exists) {
+        void router.navigate({
+          to: '/courses/$courseId/lessons/$lessonId',
+          params: { courseId, lessonId },
+          search: buildSearch({ block: 'summary' }),
+          replace: true,
+        })
+      }
+    }
+  }, [lesson, lessonSelection, router, courseId, lessonId, reviewModeEnabled])
 
   return (
     <section

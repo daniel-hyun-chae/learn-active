@@ -27,7 +27,7 @@ Status drives folder location:
 
 - Items use `BG-NNN` IDs for stable reference.
 - Each item lives in its own file: `BG-NNN-short-slug.md`.
-- Next available ID: `BG-027`.
+- Next available ID: `BG-037`.
 - Priority tiers:
   - `P0` -- Foundation or blocker. Must be done before other work builds on it.
   - `P1` -- Next capability. Important for proving the core learning loop.
@@ -147,32 +147,42 @@ When implementation starts, the change-orchestrator appends these sections to th
 
 ### P1 -- Next Capabilities
 
-| ID     | Title                                      | Status |
-| ------ | ------------------------------------------ | ------ |
-| BG-004 | Learner attempt and progress persistence   | Done   |
-| BG-005 | Exercise type abstraction                  | Done   |
-| BG-006 | Multiple-choice exercise end-to-end        | Done   |
-| BG-007 | Wrong-answer review queue                  | Done   |
-| BG-025 | Learner attempt and progression hardening  | Done   |
-| BG-026 | Lesson exercise feedback and progress sync | Done   |
+| ID     | Title                                                    | Status   |
+| ------ | -------------------------------------------------------- | -------- |
+| BG-004 | Learner attempt and progress persistence                 | Done     |
+| BG-005 | Exercise type abstraction                                | Done     |
+| BG-006 | Multiple-choice exercise end-to-end                      | Done     |
+| BG-007 | Wrong-answer review queue                                | Done     |
+| BG-025 | Learner attempt and progression hardening                | Done     |
+| BG-026 | Lesson exercise feedback and progress sync               | Done     |
+| BG-027 | Learner resume and home experience                       | Done     |
+| BG-028 | AI runtime foundation                                    | Proposed |
+| BG-029 | Contextual AI tutor                                      | Proposed |
+| BG-030 | Marketplace catalog discovery                            | Done     |
+| BG-031 | AI course scaffolding                                    | Proposed |
+| BG-035 | Resume continue link targeting                           | Done     |
+| BG-036 | Resume continue hardening and deterministic e2e coverage | Done     |
 
 ### P2 -- After Foundation
 
-| ID     | Title                          | Status   |
-| ------ | ------------------------------ | -------- |
-| BG-008 | Publisher validation UX        | Done     |
-| BG-009 | Offline attempt sync           | Proposed |
-| BG-010 | Reordering exercise end-to-end | Proposed |
+| ID     | Title                            | Status   |
+| ------ | -------------------------------- | -------- |
+| BG-008 | Publisher validation UX          | Done     |
+| BG-009 | Offline attempt sync             | Proposed |
+| BG-032 | Publisher analytics dashboard    | Proposed |
+| BG-033 | Publisher profile and storefront | Proposed |
 
 ### P3 -- Later
 
 | ID     | Title                           | Status   |
 | ------ | ------------------------------- | -------- |
+| BG-010 | Reordering exercise end-to-end  | Done     |
 | BG-011 | Course binder and collections   | Proposed |
 | BG-012 | Spaced practice and review mode | Proposed |
 | BG-013 | AI draft exercise generation    | Proposed |
 | BG-014 | Organization workspace v1       | Proposed |
 | BG-015 | Organization roles and invites  | Proposed |
+| BG-034 | Course ratings and reviews      | Proposed |
 
 ### Governance
 

@@ -38,6 +38,7 @@ test('pull request validation workflow wiring', () => {
   assert.ok(lockfileScript.includes('pnpm major and lockfile major mismatch'))
 
   assert.ok(productGuidelines.includes('CI-equivalent local validation suite'))
+  assert.ok(productGuidelines.includes('canonical sample German course'))
   assert.ok(productGuidelines.includes('pnpm validate:lockfile'))
   assert.ok(productGuidelines.includes('pnpm lint'))
   assert.ok(productGuidelines.includes('pnpm build'))

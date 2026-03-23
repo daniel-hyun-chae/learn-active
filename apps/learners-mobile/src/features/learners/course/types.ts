@@ -1,12 +1,27 @@
 export type Course = {
   id: string
+  versionId?: string
   slug?: string
   title: string
   description: string
   priceCents?: number | null
   currency?: string
   isPaid?: boolean
+  categoryIds?: string[]
+  tags?: string[]
+  languageCode?: string
+  previewLessonId?: string | null
+  resumePosition?: LearnerResumePosition | null
   modules: Module[]
+}
+
+export type LearnerResumePosition = {
+  courseId: string
+  lessonId: string
+  block: 'summary' | 'contentPage' | 'exercise'
+  contentPageId: string | null
+  exerciseId: string | null
+  visitedAt: string
 }
 
 export type CatalogCourse = {
@@ -17,6 +32,12 @@ export type CatalogCourse = {
   priceCents?: number | null
   currency: string
   isPaid: boolean
+  categoryIds?: string[]
+  tags?: string[]
+  languageCode?: string
+  previewLessonId?: string | null
+  enrollmentCount?: number
+  popularityScore?: number
 }
 
 export type Module = {
@@ -72,7 +93,21 @@ export type MultipleChoiceExercise = {
   }
 }
 
-export type Exercise = FillInBlankExercise | MultipleChoiceExercise
+export type ReorderingExercise = {
+  id: string
+  type: 'REORDERING'
+  title: string
+  instructions?: string
+  reordering: {
+    prompt: string
+    items: ReorderingItem[]
+  }
+}
+
+export type Exercise =
+  | FillInBlankExercise
+  | MultipleChoiceExercise
+  | ReorderingExercise
 
 export type ExerciseStep = {
   id: string
@@ -100,4 +135,11 @@ export type MultipleChoiceChoice = {
   order: number
   text: string
   isCorrect: boolean
+}
+
+export type ReorderingItem = {
+  id: string
+  order: number
+  text: string
+  isDistractor: boolean
 }

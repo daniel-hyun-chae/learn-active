@@ -9,6 +9,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
 
 export type CourseContent = {
   modules: Array<{
@@ -128,12 +129,23 @@ export const courses = pgTable(
     priceCents: integer('price_cents'),
     currency: text('currency').notNull().default('eur'),
     stripePriceId: text('stripe_price_id'),
+    categoryIds: text('category_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    tags: text('tags')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    languageCode: text('language_code').notNull().default('en'),
+    previewLessonId: text('preview_lesson_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     ownerIdIdx: index('courses_owner_id_idx').on(table.ownerId),
     slugUnique: uniqueIndex('courses_slug_key').on(table.slug),
+    languageCodeIdx: index('courses_language_code_idx').on(table.languageCode),
   }),
 )
 
@@ -225,6 +237,11 @@ export const enrollments = pgTable(
       .references(() => courses.id),
     enrolledAt: timestamp('enrolled_at', { withTimezone: true }).defaultNow(),
     status: text('status').notNull(),
+    lastVisitedLessonId: text('last_visited_lesson_id'),
+    lastVisitedBlock: text('last_visited_block'),
+    lastVisitedContentPageId: text('last_visited_content_page_id'),
+    lastVisitedExerciseId: text('last_visited_exercise_id'),
+    lastVisitedAt: timestamp('last_visited_at', { withTimezone: true }),
   },
   (table) => ({
     userCourseUnique: uniqueIndex('enrollments_user_id_course_id_key').on(
@@ -233,6 +250,10 @@ export const enrollments = pgTable(
     ),
     userIdx: index('enrollments_user_id_idx').on(table.userId),
     courseIdx: index('enrollments_course_id_idx').on(table.courseId),
+    userLastVisitedIdx: index('enrollments_user_last_visited_idx').on(
+      table.userId,
+      table.lastVisitedAt,
+    ),
   }),
 )
 

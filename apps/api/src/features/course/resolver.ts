@@ -15,11 +15,18 @@ import {
   Exercise,
   LearnerExerciseAttempt,
   LearnerExerciseAttemptHistoryEntry,
+  LearnerResumePosition,
   MyCourse,
   Payment,
   PublicCourse,
+  PublicPreviewLesson,
 } from './types.js'
-import { CourseInput, LearnerExerciseAttemptInput } from './inputs.js'
+import {
+  CourseInput,
+  PublicCatalogQueryInput,
+  LearnerExerciseAttemptInput,
+  LearnerResumePositionInput,
+} from './inputs.js'
 import { requireAuthenticatedUser } from '../auth/guard.js'
 import {
   isActivelyEnrolled,
@@ -46,6 +53,37 @@ function evaluateExerciseCorrectness(
   exercise: Exercise,
   answers: Record<string, string>,
 ) {
+  if (exercise.type === 'REORDERING') {
+    const items = [...(exercise.reordering?.items ?? [])].sort(
+      (a, b) => a.order - b.order,
+    )
+    const itemById = new Map(items.map((item) => [item.id, item]))
+    const learnerOrderedNonDistractorIds = Object.entries(answers)
+      .filter(([id]) => itemById.has(id))
+      .map(([id, rank]) => ({
+        id,
+        rank: Number.parseInt(rank, 10),
+      }))
+      .filter((entry) => Number.isFinite(entry.rank))
+      .sort((a, b) => a.rank - b.rank)
+      .map((entry) => entry.id)
+      .filter((id) => !itemById.get(id)?.isDistractor)
+
+    const expectedNonDistractorIds = items
+      .filter((item) => !item.isDistractor)
+      .map((item) => item.id)
+
+    if (
+      learnerOrderedNonDistractorIds.length !== expectedNonDistractorIds.length
+    ) {
+      return false
+    }
+
+    return learnerOrderedNonDistractorIds.every(
+      (id, index) => id === expectedNonDistractorIds[index],
+    )
+  }
+
   if (exercise.type === 'FILL_IN_THE_BLANK') {
     const steps = exercise.fillInBlank?.steps ?? []
     for (const step of steps) {
@@ -92,6 +130,17 @@ function findLessonExercise(
       }
       const exercise = lesson.exercises.find((entry) => entry.id === exerciseId)
       return exercise ?? null
+    }
+  }
+  return null
+}
+
+function findCourseLesson(course: Course, lessonId: string) {
+  for (const module of course.modules) {
+    for (const lesson of module.lessons) {
+      if (lesson.id === lessonId) {
+        return lesson
+      }
     }
   }
   return null
@@ -209,8 +258,23 @@ export class CourseResolver {
   }
 
   @Query(() => [PublicCourse])
-  async publicCourses(@Ctx() _ctx: GraphQLContext) {
-    return await _ctx.services.courseRepository.listPublicCourses()
+  async publicCourses(
+    @Arg('query', () => PublicCatalogQueryInput, { nullable: true })
+    query: PublicCatalogQueryInput | null,
+    @Ctx() _ctx: GraphQLContext,
+  ) {
+    return await _ctx.services.courseRepository.listPublicCourses(
+      query
+        ? {
+            search: query.search ?? undefined,
+            categoryIds: query.categoryIds ?? undefined,
+            priceFilter: query.priceFilter ?? undefined,
+            languageCodes: query.languageCodes ?? undefined,
+            sort: query.sort ?? undefined,
+            limit: query.limit ?? undefined,
+          }
+        : undefined,
+    )
   }
 
   @Query(() => PublicCourse, { nullable: true })
@@ -219,6 +283,52 @@ export class CourseResolver {
     @Ctx() ctx: GraphQLContext,
   ) {
     return await ctx.services.courseRepository.getPublicCourseBySlug(slug)
+  }
+
+  @Query(() => PublicPreviewLesson, { nullable: true })
+  async publicPreviewLesson(
+    @Arg('slug', () => String) slug: string,
+    @Ctx() ctx: GraphQLContext,
+  ) {
+    return await ctx.services.courseRepository.getPublicPreviewLessonBySlug(
+      slug,
+    )
+  }
+
+  @Query(() => Course, { nullable: true })
+  async publicPreviewCourse(
+    @Arg('slug', () => String) slug: string,
+    @Ctx() ctx: GraphQLContext,
+  ) {
+    const publicCourse =
+      await ctx.services.courseRepository.getPublicCourseBySlug(slug)
+    if (!publicCourse?.modules || !publicCourse.previewLessonId) {
+      return null
+    }
+
+    return {
+      id: publicCourse.id,
+      versionId: `preview-${publicCourse.id}`,
+      version: 0,
+      status: 'published',
+      title: publicCourse.title,
+      description: publicCourse.description,
+      priceCents: publicCourse.priceCents,
+      currency: publicCourse.currency,
+      stripePriceId: publicCourse.stripePriceId,
+      isPaid: publicCourse.isPaid,
+      categoryIds: publicCourse.categoryIds ?? [],
+      tags: publicCourse.tags ?? [],
+      languageCode: publicCourse.languageCode ?? 'en',
+      previewLessonId: publicCourse.previewLessonId,
+      changeNote: null,
+      createdAt: new Date().toISOString(),
+      createdBy: 'public-preview',
+      publishedAt: new Date().toISOString(),
+      archivedAt: null,
+      resumePosition: null,
+      modules: publicCourse.modules,
+    }
   }
 
   @Query(() => [MyCourse])
@@ -361,6 +471,10 @@ export class CourseResolver {
           priceCents: row.priceCents,
           currency: row.currency,
           stripePriceId: isPaid ? stripePriceId : null,
+          categoryIds: row.categoryIds,
+          tags: row.tags,
+          languageCode: row.languageCode,
+          previewLessonId: row.previewLessonId,
           content: row.content,
         },
       })
@@ -388,6 +502,10 @@ export class CourseResolver {
           priceCents: null,
           currency: 'eur',
           stripePriceId: null,
+          categoryIds: seedCourseRow.categoryIds,
+          tags: seedCourseRow.tags,
+          languageCode: seedCourseRow.languageCode,
+          previewLessonId: seedCourseRow.previewLessonId,
           content: seedCourseRow.content,
         },
       })
@@ -630,5 +748,90 @@ export class CourseResolver {
         ([key, value]): AttemptAnswer => ({ key, value }),
       ),
     }
+  }
+
+  @Mutation(() => LearnerResumePosition)
+  async upsertLearnerResumePosition(
+    @Arg('input', () => LearnerResumePositionInput)
+    input: LearnerResumePositionInput,
+    @Ctx() ctx: GraphQLContext,
+  ) {
+    const user = requireAuthenticatedUser(ctx)
+
+    if (
+      input.block !== 'summary' &&
+      input.block !== 'contentPage' &&
+      input.block !== 'exercise'
+    ) {
+      throw new GraphQLError('Resume block is invalid.', {
+        extensions: { code: 'BAD_USER_INPUT' },
+      })
+    }
+
+    const learnerCourse =
+      await ctx.services.courseRepository.getLearnerCourseById({
+        userId: user.id,
+        id: input.courseId,
+      })
+
+    if (!learnerCourse) {
+      throw new GraphQLError('Course is not available to this learner.', {
+        extensions: { code: 'FORBIDDEN' },
+      })
+    }
+
+    const mappedCourse = mapPublisherCourseToCourse(learnerCourse)
+    const lesson = findCourseLesson(mappedCourse, input.lessonId)
+    if (!lesson) {
+      throw new GraphQLError('Lesson not found for this course.', {
+        extensions: { code: 'BAD_USER_INPUT' },
+      })
+    }
+
+    if (input.block === 'contentPage') {
+      if (!input.contentPageId) {
+        throw new GraphQLError(
+          'contentPageId is required for contentPage block.',
+          {
+            extensions: { code: 'BAD_USER_INPUT' },
+          },
+        )
+      }
+
+      const contentPageExists = lesson.contentPages.some(
+        (contentPage) => contentPage.id === input.contentPageId,
+      )
+      if (!contentPageExists) {
+        throw new GraphQLError('Content page not found for this lesson.', {
+          extensions: { code: 'BAD_USER_INPUT' },
+        })
+      }
+    }
+
+    if (input.block === 'exercise') {
+      if (!input.exerciseId) {
+        throw new GraphQLError('exerciseId is required for exercise block.', {
+          extensions: { code: 'BAD_USER_INPUT' },
+        })
+      }
+
+      const exerciseExists = lesson.exercises.some(
+        (exercise) => exercise.id === input.exerciseId,
+      )
+      if (!exerciseExists) {
+        throw new GraphQLError('Exercise not found for this lesson.', {
+          extensions: { code: 'BAD_USER_INPUT' },
+        })
+      }
+    }
+
+    return await ctx.services.courseRepository.upsertLearnerResumePosition({
+      userId: user.id,
+      courseId: input.courseId,
+      lessonId: input.lessonId,
+      block: input.block,
+      contentPageId: input.contentPageId,
+      exerciseId: input.exerciseId,
+    })
   }
 }

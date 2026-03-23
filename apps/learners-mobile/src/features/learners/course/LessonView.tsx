@@ -12,10 +12,13 @@ import { tokens } from '@app/shared-tokens'
 import type { Lesson } from './types'
 import { FillInBlankExercise } from './exercises/FillInBlankExercise'
 import { MultipleChoiceExercise } from './exercises/MultipleChoiceExercise'
+import { ReorderingExercise } from './exercises/ReorderingExercise'
 
 type LessonViewProps = {
   lesson: Lesson
   onBack: () => void
+  initialSelection?: BlockSelection
+  onSelectionChange?: (selection: BlockSelection) => void
 }
 
 type BlockSelection =
@@ -23,15 +26,49 @@ type BlockSelection =
   | { type: 'contentPage'; contentPageId: string }
   | { type: 'exercise'; exerciseId: string }
 
-export function LessonView({ lesson, onBack }: LessonViewProps) {
+function normalizeSelection(
+  selection: BlockSelection | undefined,
+  lesson: Lesson,
+): BlockSelection {
+  if (!selection) {
+    return { type: 'summary' }
+  }
+
+  if (selection.type === 'contentPage') {
+    const exists = lesson.contentPages.some(
+      (contentPage) => contentPage.id === selection.contentPageId,
+    )
+    return exists ? selection : { type: 'summary' }
+  }
+
+  if (selection.type === 'exercise') {
+    const exists = lesson.exercises.some(
+      (exercise) => exercise.id === selection.exerciseId,
+    )
+    return exists ? selection : { type: 'summary' }
+  }
+
+  return selection
+}
+
+export function LessonView({
+  lesson,
+  onBack,
+  initialSelection,
+  onSelectionChange,
+}: LessonViewProps) {
   const { t } = useTranslation()
-  const [selection, setSelection] = useState<BlockSelection>({
-    type: 'summary',
-  })
+  const [selection, setSelection] = useState<BlockSelection>(
+    normalizeSelection(initialSelection, lesson),
+  )
 
   useEffect(() => {
-    setSelection({ type: 'summary' })
-  }, [lesson.id])
+    setSelection(normalizeSelection(initialSelection, lesson))
+  }, [lesson.id, initialSelection])
+
+  useEffect(() => {
+    onSelectionChange?.(selection)
+  }, [onSelectionChange, selection])
 
   const contentPages = useMemo(
     () => [...lesson.contentPages].sort((a, b) => a.order - b.order),
@@ -123,6 +160,15 @@ export function LessonView({ lesson, onBack }: LessonViewProps) {
               selectedExercise as Extract<
                 Lesson['exercises'][number],
                 { type: 'MULTIPLE_CHOICE' }
+              >
+            }
+          />
+        ) : selectedExercise.type === 'REORDERING' ? (
+          <ReorderingExercise
+            exercise={
+              selectedExercise as Extract<
+                Lesson['exercises'][number],
+                { type: 'REORDERING' }
               >
             }
           />

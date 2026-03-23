@@ -10,6 +10,9 @@ export type PublisherValidationIssueCode =
   | 'FILL_OPTIONS_MISSING_CORRECT'
   | 'MULTIPLE_CHOICE_HAS_NO_CHOICES'
   | 'MULTIPLE_CHOICE_NO_CORRECT_CHOICE'
+  | 'REORDERING_HAS_NO_ITEMS'
+  | 'REORDERING_NEEDS_TWO_SEQUENCE_ITEMS'
+  | 'REORDERING_ITEM_TEXT_EMPTY'
 
 type ValidationPath = {
   moduleId?: string
@@ -71,6 +74,14 @@ type CourseLike = {
             id?: string
             order?: number
             isCorrect?: boolean
+          }>
+        }
+        reordering?: {
+          items?: Array<{
+            id?: string
+            order?: number
+            text?: string
+            isDistractor?: boolean
           }>
         }
       }>
@@ -170,6 +181,38 @@ export function validatePublisherCourse(
               path: exercisePath,
             })
           }
+          return
+        }
+
+        if (exercise.type === 'REORDERING') {
+          const items = exercise.reordering?.items ?? []
+          if (items.length === 0) {
+            issues.push({
+              severity: 'error',
+              code: 'REORDERING_HAS_NO_ITEMS',
+              path: exercisePath,
+            })
+          }
+
+          const sequenceItems = items.filter((item) => !item.isDistractor)
+          if (sequenceItems.length < 2) {
+            issues.push({
+              severity: 'error',
+              code: 'REORDERING_NEEDS_TWO_SEQUENCE_ITEMS',
+              path: exercisePath,
+            })
+          }
+
+          items.forEach((item) => {
+            if (!trimText(item.text)) {
+              issues.push({
+                severity: 'error',
+                code: 'REORDERING_ITEM_TEXT_EMPTY',
+                path: exercisePath,
+              })
+            }
+          })
+
           return
         }
 
@@ -284,6 +327,12 @@ export function formatPublisherValidationIssue(
       return `${location} has no answer choices.`
     case 'MULTIPLE_CHOICE_NO_CORRECT_CHOICE':
       return `${location} has no correct choice selected.`
+    case 'REORDERING_HAS_NO_ITEMS':
+      return `${location} has no reordering items.`
+    case 'REORDERING_NEEDS_TWO_SEQUENCE_ITEMS':
+      return `${location} needs at least two non-distractor items in sequence.`
+    case 'REORDERING_ITEM_TEXT_EMPTY':
+      return `${location} has a reordering item without text.`
     default:
       return `${location} has a validation issue.`
   }

@@ -66,6 +66,17 @@ export const resources = {
       'catalog.open': 'Open details',
       'catalog.empty': 'No published courses are available yet.',
       'catalog.ownerLabel': 'Instructor: {{name}}',
+      'catalog.searchPlaceholder': 'Search courses by title or description',
+      'catalog.filter.category': 'Category',
+      'catalog.filter.anyCategory': 'Any category',
+      'catalog.filter.price': 'Price',
+      'catalog.filter.anyPrice': 'Any price',
+      'catalog.filter.freeOnly': 'Free only',
+      'catalog.filter.paidOnly': 'Paid only',
+      'catalog.filter.language': 'Language',
+      'catalog.filter.anyLanguage': 'Any language',
+      'catalog.featured.title': 'Featured courses',
+      'catalog.enrollmentCount': '{{count}} enrolled',
       'catalog.detail.back': 'Back to catalog',
       'catalog.detail.enrolled': 'You are enrolled in this course.',
       'catalog.detail.loginToEnroll': 'Log in to enroll',
@@ -73,6 +84,15 @@ export const resources = {
       'catalog.detail.purchasePending':
         'Payment received. Enrollment is syncing. This can take a few seconds.',
       'catalog.detail.checkoutError': 'Unable to start checkout right now.',
+      'catalog.detail.structureTitle': 'Course structure preview',
+      'catalog.detail.previewLessonBadge': 'Free preview',
+      'catalog.detail.openPreview': 'Open free preview lesson',
+      'catalog.detail.closePreview': 'Close free preview lesson',
+      'catalog.detail.previewNotPersisted':
+        'Preview attempts are not saved before enrollment.',
+      'catalog.detail.previewLoading': 'Loading preview lesson...',
+      'catalog.detail.previewUnavailable':
+        'Preview lesson is unavailable for this course.',
       'myCourses.title': 'My courses',
       'myCourses.subtitle': 'Continue where you left off.',
       'myCourses.version': 'Version {{version}}',
@@ -107,6 +127,14 @@ export const resources = {
       'learners.progress.modulePercent': 'Module {{percent}}% complete',
       'learners.progress.exerciseStatusAttempted': 'Attempted',
       'learners.progress.exerciseStatusCorrect': 'Correct',
+      'learners.resume.primaryLabel': 'Continue learning',
+      'learners.resume.cta': 'Continue',
+      'learners.resume.lastAccessed': 'Last accessed {{value}}',
+      'learners.resume.lastAccessedUnknown': 'Last accessed recently',
+      'learners.resume.noEnrollments':
+        'You are not enrolled in any courses yet. Browse the catalog to start learning.',
+      'learners.resume.browseCatalog': 'Browse catalog',
+      'learners.resume.otherCourses': 'Other enrolled courses',
       'learners.review.enable': 'Enable review mode',
       'learners.review.disable': 'Disable review mode',
       'learners.review.pendingCount':
@@ -149,6 +177,13 @@ export const resources = {
       'learners.exercise.multipleChoice.correct': 'Correct answer.',
       'learners.exercise.multipleChoice.incorrect':
         'Not quite right, try another choice.',
+      'learners.exercise.reordering.helper':
+        'Drag items, or use arrow controls, to set the correct order.',
+      'learners.exercise.reordering.submit': 'Check order',
+      'learners.exercise.reordering.correct': 'Correct order.',
+      'learners.exercise.reordering.incorrect':
+        'Order is not correct yet. Try again.',
+      'learners.exercise.reordering.distractorBadge': 'Distractor',
       'publishers.nav.skip': 'Skip to content',
       'publishers.nav.courses': 'Courses',
       'publishers.nav.quizzes': 'Quizzes',
@@ -204,6 +239,13 @@ export const resources = {
       'publishers.course.priceHint':
         'Leave empty or 0 for free. Any positive value enables paid checkout.',
       'publishers.course.description': 'Description',
+      'publishers.course.languageCode': 'Language code',
+      'publishers.course.categoryIds': 'Categories',
+      'publishers.course.categoryHint':
+        'Use comma-separated category IDs (for example: languages, business).',
+      'publishers.course.tags': 'Tags',
+      'publishers.course.previewLessonId': 'Free preview lesson',
+      'publishers.course.previewNone': 'No free preview lesson',
       'publishers.structure.title': 'Course structure',
       'publishers.structure.course': 'Course',
       'publishers.structure.module': 'Module',
@@ -240,6 +282,7 @@ export const resources = {
       'publishers.exercise.type': 'Exercise type',
       'publishers.exercise.typeFillInBlank': 'Fill in the blank',
       'publishers.exercise.typeMultipleChoice': 'Multiple choice',
+      'publishers.exercise.typeReordering': 'Reordering',
       'publishers.exercise.instructions': 'Instructions',
       'publishers.exercise.prompt': 'Prompt',
       'publishers.exercise.promptPlaceholder':
@@ -261,6 +304,14 @@ export const resources = {
       'publishers.exercise.multipleChoice.addChoice': 'Add choice',
       'publishers.exercise.multipleChoice.choiceText': 'Choice text',
       'publishers.exercise.multipleChoice.correctChoice': 'Correct choice',
+      'publishers.exercise.reordering.defaultPrompt':
+        'Arrange the items in the correct order.',
+      'publishers.exercise.reordering.itemPlaceholder': 'New item',
+      'publishers.exercise.reordering.prompt': 'Prompt',
+      'publishers.exercise.reordering.addItem': 'Add item',
+      'publishers.exercise.reordering.itemText': 'Item text',
+      'publishers.exercise.reordering.distractor':
+        'Distractor (not part of the correct sequence)',
       'publishers.exercise.empty': 'No exercises added yet.',
       'publishers.actions.delete': 'Delete',
       'publishers.actions.move': 'Move',
@@ -322,6 +373,12 @@ export const resources = {
         '{{location}} has no answer choices.',
       'publishers.validation.issue.MULTIPLE_CHOICE_NO_CORRECT_CHOICE':
         '{{location}} has no correct choice selected.',
+      'publishers.validation.issue.REORDERING_HAS_NO_ITEMS':
+        '{{location}} has no reordering items.',
+      'publishers.validation.issue.REORDERING_NEEDS_TWO_SEQUENCE_ITEMS':
+        '{{location}} needs at least two non-distractor items in sequence.',
+      'publishers.validation.issue.REORDERING_ITEM_TEXT_EMPTY':
+        '{{location}} has a reordering item without text.',
       'mobile.learners.title': 'Learn offline, keep in sync',
       'mobile.learners.subtitle':
         'Pick up lessons and answer quizzes anywhere.',

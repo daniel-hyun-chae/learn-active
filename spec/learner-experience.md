@@ -11,6 +11,11 @@ Learners see a course list and can start the first lesson.
 - Landing experience renders a course card in web and mobile.
 - Course card displays title and description.
 - Course card links to or opens the first lesson view.
+- Learner home shows a primary Continue learning card for the most recently accessed enrolled course.
+- Continue action opens the exact last-visited lesson block (summary, content page, or exercise) when resume context exists.
+- Additional enrolled courses are ordered by most recent activity (`last_visited_at` fallback to enrollment time) and display last-access context.
+- Learners with no enrollments see catalog browsing fallback content instead of an empty enrolled-course-only view.
+- Resume position updates as learners navigate lesson structure in web and mobile.
 
 ## Lesson block selection
 
@@ -49,18 +54,22 @@ Learners complete fill-in-the-blank exercises with typing and options.
 - Final-step submission shows correctness feedback after learner answers are saved.
 - Exercise flow supports web and mobile inputs.
 
-## Discriminated exercise rendering with multiple-choice
+## Discriminated exercise rendering with multiple-choice and reordering
 
-Learner web and mobile render exercises via type-dispatched components and support multiple-choice.
+Learner web and mobile render exercises via type-dispatched components and support both multiple-choice and reordering.
 
 ### Behaviors
 
-- Learner exercise payload uses discriminated fields (fillInBlank, multipleChoice) under Exercise.type.
+- Learner exercise payload uses discriminated fields (fillInBlank, multipleChoice, reordering) under Exercise.type.
 - Fill-in-the-blank rendering continues to work using fillInBlank.steps.
 - Multiple-choice rendering is available in both web and mobile lesson flows.
 - Multiple-choice supports single-select and multi-select based on allowsMultiple.
 - Learner UI provides immediate local correctness feedback for multiple-choice selections.
 - Multiple-choice submission synchronizes with backend attempt persistence so lesson/course progress and attempt history reflect submitted answers.
+- Reordering rendering is available in both web and mobile lesson flows with shuffled initial item order.
+- Web reordering supports drag-and-drop and keyboard ArrowUp/ArrowDown controls.
+- Mobile reordering supports tap-based move controls for ordered list manipulation.
+- Reordering submission evaluates correctness against publisher-defined non-distractor sequence order.
 
 ## Public catalog and enrollment
 
@@ -72,6 +81,15 @@ Learners and guests discover published courses. Authenticated learners can enrol
 - `/courses/$slug` renders published course detail for anonymous and authenticated users.
 - Enrollment action requires authentication and uses idempotent behavior.
 - Instructor/owner label uses profiles.display_name only when available.
+- Catalog supports text search across published course title and description.
+- Catalog supports filtering by category, price (all/free/paid), and language.
+- Web catalog persists search and filter state in URL query params for shareable results.
+- Catalog renders a featured section ranked by popularity score before full result list.
+- Course cards show enrollment count alongside price and course summary metadata.
+- Course detail shows module and lesson structure preview before enrollment.
+- Publisher can mark one free preview lesson that is visible in course detail structure.
+- Free preview lesson can be opened by unenrolled learners and does not persist attempts.
+- Marketplace discovery metadata and filtering behavior is available on both web and mobile clients.
 
 ## My Courses and published access
 
