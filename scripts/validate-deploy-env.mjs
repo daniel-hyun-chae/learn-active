@@ -5,6 +5,7 @@ const localhostHosts = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 function parseArgs(argv) {
   const args = {
     target: null,
+    requireMigrations: false,
   }
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -17,6 +18,11 @@ function parseArgs(argv) {
 
     if (value.startsWith('--target=')) {
       args.target = value.slice('--target='.length)
+      continue
+    }
+
+    if (value === '--require-migrations') {
+      args.requireMigrations = true
     }
   }
 
@@ -66,7 +72,7 @@ function normalizeOrigin(url) {
 }
 
 function run() {
-  const { target } = parseArgs(process.argv.slice(2))
+  const { target, requireMigrations } = parseArgs(process.argv.slice(2))
   if (!target || (target !== 'staging' && target !== 'production')) {
     fail('Usage: pnpm validate:deploy-env -- --target <staging|production>')
   }
@@ -98,6 +104,23 @@ function run() {
     )
   }
 
+  if (requireMigrations) {
+    const migrationKeys = [
+      'SUPABASE_ACCESS_TOKEN',
+      `SUPABASE_DB_PASSWORD_${suffix}`,
+    ]
+    const missingMigration = migrationKeys.filter((key) => {
+      const value = process.env[key]
+      return !value || !value.trim()
+    })
+
+    if (missingMigration.length > 0) {
+      fail(
+        `Missing required ${target} migration credential(s): ${missingMigration.join(', ')}. Configure these in GitHub secrets before API deploy.`,
+      )
+    }
+  }
+
   const supabaseUrl = assertHostedHttpsUrl(
     `SUPABASE_PROJECT_URL_${suffix}`,
     process.env[`SUPABASE_PROJECT_URL_${suffix}`],
@@ -118,6 +141,12 @@ function run() {
   console.log(
     `[validate:deploy-env] Using Supabase project host: ${supabaseUrl.host}`,
   )
+
+  if (requireMigrations) {
+    console.log(
+      `[validate:deploy-env] ${target} migration credentials are present (SUPABASE_ACCESS_TOKEN and SUPABASE_DB_PASSWORD_${suffix}).`,
+    )
+  }
 }
 
 run()

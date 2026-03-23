@@ -269,8 +269,11 @@ Merges to `main` automatically deploy staging resources.
 - Staging deployment validates environment contract before deployment.
 - Staging deployment requires Stripe staging secrets.
 - Staging API deploy performs post-deploy health verification with CORS headers.
+- Staging API deploy health verification retries transient hosted API failures before final failure.
 - Staging API deploy preserves existing hosted Worker vars across redeploys.
+- Staging API deploy applies Supabase hosted migrations before Worker deploy.
 - Staging deploy contract requires `SUPABASE_SERVICE_ROLE_KEY_STAGING` and syncs `SUPABASE_SERVICE_ROLE_KEY` to the staging Worker before deploy.
+- Staging API deploy contract requires `SUPABASE_DB_PASSWORD_STAGING` and repository `SUPABASE_ACCESS_TOKEN` for migration execution.
 - Local and staging runtime service startup enforces idempotent system seed provisioning so sample content is always available.
 
 ### Production deployment
@@ -285,8 +288,11 @@ Production releases are manual and support redeploy/rollback by commit ref.
 - Web deploys to Cloudflare Pages project production.
 - Production deployment validates environment contract before deployment.
 - Production API deploy performs post-deploy health verification.
+- Production API deploy health verification retries transient hosted API failures before final failure.
 - Production API deploy preserves existing hosted Worker vars across redeploys.
+- Production API deploy applies Supabase hosted migrations before Worker deploy.
 - Production deploy contract requires `SUPABASE_SERVICE_ROLE_KEY_PROD` and syncs `SUPABASE_SERVICE_ROLE_KEY` to the production Worker before deploy.
+- Production API deploy contract requires `SUPABASE_DB_PASSWORD_PROD` and repository `SUPABASE_ACCESS_TOKEN` for migration execution.
 
 ### Monorepo-aware deployment
 
@@ -328,6 +334,7 @@ New contributors can understand the release flow.
 - Documentation defines staging/production environment model and resource mapping.
 - Documentation lists required secrets.
 - Documentation explains manual production trigger and rollback.
+- CI/CD documentation includes a hosted API incident runbook for post-deploy health verification failures.
 - README links to CI/CD documentation.
 
 ## Governance

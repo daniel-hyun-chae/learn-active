@@ -34,6 +34,7 @@ These are shared deploy credentials used by staging and production workflows:
 
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
+- `SUPABASE_ACCESS_TOKEN`
 
 ## 3) GitHub environment secrets (manual set per environment)
 
@@ -42,6 +43,7 @@ These are shared deploy credentials used by staging and production workflows:
 - `SUPABASE_PROJECT_URL_STAGING`
 - `SUPABASE_PUBLISHABLE_KEY_STAGING`
 - `SUPABASE_SERVICE_ROLE_KEY_STAGING`
+- `SUPABASE_DB_PASSWORD_STAGING`
 - `API_URL_STAGING`
 - `WEB_URL_STAGING`
 - `STRIPE_SECRET_KEY_STAGING`
@@ -53,6 +55,7 @@ These are shared deploy credentials used by staging and production workflows:
 - `SUPABASE_PROJECT_URL_PROD`
 - `SUPABASE_PUBLISHABLE_KEY_PROD`
 - `SUPABASE_SERVICE_ROLE_KEY_PROD`
+- `SUPABASE_DB_PASSWORD_PROD`
 - `API_URL_PROD`
 - `WEB_URL_PROD`
 - `STRIPE_SECRET_KEY_PROD`
