@@ -2506,6 +2506,7 @@ async function ensureWorkerSeedCourse(client: SupabaseClient) {
       .limit(1)
       .maybeSingle(),
   )
+
   if (!owner?.id) {
     throw new Error('System owner is missing. Cannot bootstrap seed course.')
   }

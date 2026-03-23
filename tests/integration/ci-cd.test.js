@@ -69,6 +69,8 @@ test('staging deployment workflow wiring', () => {
     workflow.includes("if: needs.detect-changes.outputs.web_changed == 'true'"),
   )
   assert.ok(workflow.includes('SUPABASE_PROJECT_URL_STAGING'))
+  assert.ok(workflow.includes('SUPABASE_ACCESS_TOKEN'))
+  assert.ok(workflow.includes('SUPABASE_DB_PASSWORD_STAGING'))
   assert.ok(workflow.includes('SUPABASE_PUBLISHABLE_KEY_STAGING'))
   assert.ok(workflow.includes('SUPABASE_SERVICE_ROLE_KEY_STAGING'))
   assert.ok(workflow.includes('API_URL_STAGING'))
@@ -77,6 +79,11 @@ test('staging deployment workflow wiring', () => {
   assert.ok(workflow.includes('STRIPE_PUBLISHABLE_KEY_STAGING'))
   assert.ok(workflow.includes('STRIPE_WEBHOOK_SECRET_STAGING'))
   assert.ok(workflow.includes('pnpm validate:deploy-env -- --target staging'))
+  assert.ok(workflow.includes('--require-migrations'))
+  assert.ok(workflow.includes('supabase/setup-cli@v1'))
+  assert.ok(workflow.includes('Apply Supabase migrations to staging'))
+  assert.ok(workflow.includes('supabase link --project-ref'))
+  assert.ok(workflow.includes('supabase db push'))
   assert.ok(workflow.includes('Sync Stripe Worker secrets to staging'))
   assert.ok(workflow.includes('wrangler secret put SUPABASE_SERVICE_ROLE_KEY'))
   assert.ok(workflow.includes('wrangler secret put STRIPE_SECRET_KEY'))
@@ -102,6 +109,8 @@ test('production deploy and rollback workflow wiring', () => {
   assert.ok(workflow.includes('commit_ref:'))
   assert.ok(workflow.includes('git merge-base --is-ancestor'))
   assert.ok(workflow.includes('SUPABASE_PROJECT_URL_PROD'))
+  assert.ok(workflow.includes('SUPABASE_ACCESS_TOKEN'))
+  assert.ok(workflow.includes('SUPABASE_DB_PASSWORD_PROD'))
   assert.ok(workflow.includes('SUPABASE_PUBLISHABLE_KEY_PROD'))
   assert.ok(workflow.includes('SUPABASE_SERVICE_ROLE_KEY_PROD'))
   assert.ok(workflow.includes('API_URL_PROD'))
@@ -112,6 +121,11 @@ test('production deploy and rollback workflow wiring', () => {
   assert.ok(
     workflow.includes('pnpm validate:deploy-env -- --target production'),
   )
+  assert.ok(workflow.includes('--require-migrations'))
+  assert.ok(workflow.includes('supabase/setup-cli@v1'))
+  assert.ok(workflow.includes('Apply Supabase migrations to production'))
+  assert.ok(workflow.includes('supabase link --project-ref'))
+  assert.ok(workflow.includes('supabase db push'))
   assert.ok(workflow.includes('Sync Stripe Worker secrets to production'))
   assert.ok(workflow.includes('wrangler secret put SUPABASE_SERVICE_ROLE_KEY'))
   assert.ok(workflow.includes('wrangler secret put STRIPE_SECRET_KEY'))
@@ -158,6 +172,29 @@ test('deployment env validation enforces hosted URL contract', () => {
   assert.ok(validOutput.includes('staging environment contract is valid'))
   assert.ok(validOutput.includes('https://staging.example.com/auth'))
 
+  const migrationOutput = execFileSync(
+    process.execPath,
+    [script, '--target', 'staging', '--require-migrations'],
+    {
+      cwd: root,
+      env: {
+        ...process.env,
+        SUPABASE_ACCESS_TOKEN: 'sb_access_token',
+        SUPABASE_DB_PASSWORD_STAGING: 'staging-db-password',
+        SUPABASE_PROJECT_URL_STAGING: 'https://staging-project.supabase.co',
+        SUPABASE_PUBLISHABLE_KEY_STAGING: 'staging-publishable-key',
+        SUPABASE_SERVICE_ROLE_KEY_STAGING: 'staging-service-role-key',
+        API_URL_STAGING: 'https://api-staging.example.com/graphql',
+        WEB_URL_STAGING: 'https://staging.example.com',
+        STRIPE_SECRET_KEY_STAGING: 'sk_test_123',
+        STRIPE_PUBLISHABLE_KEY_STAGING: 'pk_test_123',
+        STRIPE_WEBHOOK_SECRET_STAGING: 'whsec_123',
+      },
+      encoding: 'utf8',
+    },
+  )
+  assert.ok(migrationOutput.includes('migration credentials are present'))
+
   assert.throws(
     () => {
       execFileSync(process.execPath, [script, '--target', 'staging'], {
@@ -178,6 +215,33 @@ test('deployment env validation enforces hosted URL contract', () => {
     },
     {
       message: /must use https|must not target localhost/,
+    },
+  )
+
+  assert.throws(
+    () => {
+      execFileSync(
+        process.execPath,
+        [script, '--target', 'staging', '--require-migrations'],
+        {
+          cwd: root,
+          env: {
+            ...process.env,
+            SUPABASE_PROJECT_URL_STAGING: 'https://staging-project.supabase.co',
+            SUPABASE_PUBLISHABLE_KEY_STAGING: 'staging-publishable-key',
+            SUPABASE_SERVICE_ROLE_KEY_STAGING: 'staging-service-role-key',
+            API_URL_STAGING: 'https://api-staging.example.com/graphql',
+            WEB_URL_STAGING: 'https://staging.example.com',
+            STRIPE_SECRET_KEY_STAGING: 'sk_test_123',
+            STRIPE_PUBLISHABLE_KEY_STAGING: 'pk_test_123',
+            STRIPE_WEBHOOK_SECRET_STAGING: 'whsec_123',
+          },
+          encoding: 'utf8',
+        },
+      )
+    },
+    {
+      message: /Missing required staging migration credential\(s\)/,
     },
   )
 })
@@ -291,6 +355,65 @@ test('hosted api health verification script validates deployed worker responses'
   }
 })
 
+test('hosted api health verification retries transient failures', () => {
+  const script = path.join(root, 'scripts', 'verify-hosted-api-health.mjs')
+  const tempRoot = fs.mkdtempSync(
+    path.join(root, '.tmp-verify-hosted-api-health-retry-'),
+  )
+  const mockFile = path.join(tempRoot, 'mock-loader.cjs')
+
+  try {
+    fs.writeFileSync(
+      mockFile,
+      [
+        'let callCount = 0',
+        'global.fetch = async () => {',
+        '  callCount += 1',
+        '  if (callCount === 1) {',
+        '    return new Response("temporary failure", { status: 500 })',
+        '  }',
+        "  return new Response(null, { status: 204, headers: { 'access-control-allow-origin': '*' } })",
+        '}',
+      ].join('\n'),
+      'utf8',
+    )
+
+    const output = execFileSync(
+      process.execPath,
+      [
+        script,
+        '--url',
+        'https://course-api-staging.example.workers.dev/graphql',
+        '--env',
+        'staging',
+        '--max-attempts',
+        '2',
+        '--retry-delay-ms',
+        '1',
+      ],
+      {
+        cwd: root,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          NODE_OPTIONS: `--require ${mockFile}`,
+        },
+      },
+    )
+
+    assert.ok(output.includes('attempt 1/2'))
+    assert.ok(output.includes('attempt 2/2'))
+    assert.ok(output.includes('retrying after non-2xx status 500'))
+    assert.ok(
+      output.includes(
+        'staging API preflight succeeded with Access-Control-Allow-Origin: *',
+      ),
+    )
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true })
+  }
+})
+
 test('cicd documentation and readme linking', () => {
   const docs = read('architecture/ci-cd.md')
   const readme = read('README.md')
@@ -307,11 +430,18 @@ test('cicd documentation and readme linking', () => {
   assert.ok(docs.includes('course-web'))
   assert.ok(docs.includes('CLOUDFLARE_API_TOKEN'))
   assert.ok(docs.includes('CLOUDFLARE_ACCOUNT_ID'))
+  assert.ok(docs.includes('SUPABASE_ACCESS_TOKEN'))
+  assert.ok(docs.includes('SUPABASE_DB_PASSWORD_STAGING'))
   assert.ok(docs.includes('STRIPE_SECRET_KEY_STAGING'))
   assert.ok(docs.includes('STRIPE_PUBLISHABLE_KEY_STAGING'))
   assert.ok(docs.includes('STRIPE_WEBHOOK_SECRET_STAGING'))
   assert.ok(docs.includes('validate:deploy-env'))
   assert.ok(docs.includes('localhost'))
   assert.ok(docs.includes('WEB_URL_STAGING/auth'))
+  assert.ok(docs.includes('Hosted API incident runbook'))
+  assert.ok(docs.includes('wrangler tail course-api-staging'))
+  assert.ok(docs.includes('wrangler secret list --name course-api-staging'))
+  assert.ok(docs.includes('Access-Control-Request-Method: POST'))
+  assert.ok(docs.includes('Cloudflare Ray ID'))
   assert.ok(readme.includes('architecture/ci-cd.md'))
 })

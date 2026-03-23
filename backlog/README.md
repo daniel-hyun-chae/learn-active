@@ -27,7 +27,7 @@ Status drives folder location:
 
 - Items use `BG-NNN` IDs for stable reference.
 - Each item lives in its own file: `BG-NNN-short-slug.md`.
-- Next available ID: `BG-037`.
+- Next available ID: `BG-041`.
 - Priority tiers:
   - `P0` -- Foundation or blocker. Must be done before other work builds on it.
   - `P1` -- Next capability. Important for proving the core learning loop.
@@ -144,6 +144,7 @@ When implementation starts, the change-orchestrator appends these sections to th
 | BG-003 | Publisher-learner query boundary cleanup                    | Done   |
 | BG-023 | Devcontainer port-forward stability for local Supabase auth | Done   |
 | BG-024 | Realistic B1 seed content and seed governance               | Done   |
+| BG-040 | Hosted Supabase migration gate before API deploy            | Done   |
 
 ### P1 -- Next Capabilities
 
@@ -162,6 +163,9 @@ When implementation starts, the change-orchestrator appends these sections to th
 | BG-031 | AI course scaffolding                                    | Proposed |
 | BG-035 | Resume continue link targeting                           | Done     |
 | BG-036 | Resume continue hardening and deterministic e2e coverage | Done     |
+| BG-037 | Hosted API health verification hardening                 | Done     |
+| BG-038 | Hosted API incident runbook for deploy failures          | Done     |
+| BG-039 | Remove runtime self-healing from hosted bootstrap        | Done     |
 
 ### P2 -- After Foundation
 

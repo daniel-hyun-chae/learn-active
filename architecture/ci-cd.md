@@ -78,6 +78,7 @@ Use least-privilege Cloudflare API tokens.
 
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
+- `SUPABASE_ACCESS_TOKEN`
 
 ### Environment secrets
 
@@ -88,6 +89,7 @@ Store these in GitHub Environments:
   - `SUPABASE_PROJECT_URL_STAGING`
   - `SUPABASE_PUBLISHABLE_KEY_STAGING`
   - `SUPABASE_SERVICE_ROLE_KEY_STAGING`
+  - `SUPABASE_DB_PASSWORD_STAGING`
   - `API_URL_STAGING`
   - `WEB_URL_STAGING`
   - `STRIPE_SECRET_KEY_STAGING`
@@ -98,6 +100,7 @@ Store these in GitHub Environments:
   - `SUPABASE_PROJECT_URL_PROD`
   - `SUPABASE_PUBLISHABLE_KEY_PROD`
   - `SUPABASE_SERVICE_ROLE_KEY_PROD`
+  - `SUPABASE_DB_PASSWORD_PROD`
   - `API_URL_PROD`
   - `WEB_URL_PROD`
   - `STRIPE_SECRET_KEY_PROD`
@@ -121,6 +124,19 @@ Validation checks:
 
 If validation fails, deploy is blocked.
 
+## Hosted DB migration gate and API post-deploy verification
+
+API deploy jobs apply hosted Supabase migrations before deploying the Worker.
+
+- Staging API job runs:
+  - `supabase link --project-ref <derived-from-SUPABASE_PROJECT_URL_STAGING> --password "$SUPABASE_DB_PASSWORD_STAGING"`
+  - `supabase db push`
+- Production API job runs:
+  - `supabase link --project-ref <derived-from-SUPABASE_PROJECT_URL_PROD> --password "$SUPABASE_DB_PASSWORD_PROD"`
+  - `supabase db push`
+
+Migration credentials are validated as part of API deploy env checks.
+
 ## Hosted API post-deploy verification
 
 Both API deploy jobs verify the deployed Worker endpoint immediately after deploy.
@@ -137,6 +153,62 @@ Verification behavior:
 - Fails the workflow if the response is missing `Access-Control-Allow-Origin`.
 
 This keeps hosted runtime fail-fast behavior in place while making missing or dropped Worker bindings visible in CI immediately after deployment rather than only through later browser/runtime failures.
+
+### Hosted API incident runbook (staging/production)
+
+Use this runbook when `verify-hosted-api-health` fails after API deploy (for example status 500, Cloudflare 1101, or missing CORS headers).
+
+1. Capture failure context from CI logs:
+
+   - environment (`staging` or `production`)
+   - failing URL (`API_URL_<ENV>`)
+   - status code and response snippet
+   - Cloudflare Ray ID (if present)
+
+2. Inspect live Worker logs for unhandled exceptions:
+
+   - staging: `pnpm --filter @app/api exec wrangler tail course-api-staging --format pretty`
+   - production: `pnpm --filter @app/api exec wrangler tail course-api --format pretty`
+
+3. Verify required Worker secret bindings exist:
+
+   - staging: `pnpm --filter @app/api exec wrangler secret list --name course-api-staging`
+   - production: `pnpm --filter @app/api exec wrangler secret list --name course-api`
+
+   Confirm at least:
+
+   - `SUPABASE_SERVICE_ROLE_KEY`
+   - `STRIPE_SECRET_KEY`
+   - `STRIPE_WEBHOOK_SECRET`
+
+4. Verify Worker vars include hosted runtime values:
+
+   - staging: `pnpm --filter @app/api exec wrangler vars list --name course-api-staging`
+   - production: `pnpm --filter @app/api exec wrangler vars list --name course-api`
+
+   Confirm at least:
+
+   - `APP_ENV` (staging/production)
+   - `SUPABASE_URL` (hosted https URL)
+   - `STRIPE_PUBLISHABLE_KEY`
+
+5. Reproduce CI preflight locally against hosted endpoint:
+
+   - `curl -i -X OPTIONS "$API_URL" -H "Origin: https://verify-${ENV}.example.invalid" -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: content-type,authorization"`
+
+   Expected:
+
+   - 2xx status
+   - `Access-Control-Allow-Origin` header present
+
+6. Verify GraphQL health responds after preflight recovers:
+
+   - `curl -sS -X POST "$API_URL" -H "Content-Type: application/json" --data '{"query":"{ health }"}'`
+
+7. If failure persists after secret/var correction and redeploy:
+
+   - include CI run URL, Worker log excerpt, and Ray ID in incident notes
+   - create/attach a backlog item under Foundation and link affected commit SHA
 
 ### Stripe in hosted environments
 
@@ -187,6 +259,8 @@ Where to obtain values:
 - `STRIPE_SECRET_KEY_*`: Stripe dashboard -> Developers -> API keys -> Secret key (use test-mode keys for staging).
 - `STRIPE_PUBLISHABLE_KEY_*`: Stripe dashboard -> Developers -> API keys -> Publishable key.
 - `STRIPE_WEBHOOK_SECRET_*`: Stripe dashboard -> Webhooks -> select the hosted endpoint for the environment -> Signing secret.
+- `SUPABASE_DB_PASSWORD_*`: Supabase dashboard -> Project settings -> Database -> Database password for the target environment project.
+- `SUPABASE_ACCESS_TOKEN`: Supabase dashboard -> Account -> Access Tokens.
 
 ## Triggering production deployment
 

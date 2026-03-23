@@ -90,8 +90,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
       - name: Validate staging deployment environment contract
         env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD_STAGING: ${{ secrets.SUPABASE_DB_PASSWORD_STAGING }}
           SUPABASE_PROJECT_URL_STAGING: ${{ secrets.SUPABASE_PROJECT_URL_STAGING }}
           SUPABASE_PUBLISHABLE_KEY_STAGING: ${{ secrets.SUPABASE_PUBLISHABLE_KEY_STAGING }}
           SUPABASE_SERVICE_ROLE_KEY_STAGING: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY_STAGING }}
@@ -100,7 +107,17 @@ jobs:
           STRIPE_SECRET_KEY_STAGING: ${{ secrets.STRIPE_SECRET_KEY_STAGING }}
           STRIPE_PUBLISHABLE_KEY_STAGING: ${{ secrets.STRIPE_PUBLISHABLE_KEY_STAGING }}
           STRIPE_WEBHOOK_SECRET_STAGING: ${{ secrets.STRIPE_WEBHOOK_SECRET_STAGING }}
-        run: pnpm validate:deploy-env -- --target staging
+        run: pnpm validate:deploy-env -- --target staging --require-migrations
+
+      - name: Apply Supabase migrations to staging before API deploy
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_URL_STAGING: ${{ secrets.SUPABASE_PROJECT_URL_STAGING }}
+          SUPABASE_DB_PASSWORD_STAGING: ${{ secrets.SUPABASE_DB_PASSWORD_STAGING }}
+        run: |
+          project_ref="$(node -e "const url = new URL(process.env.SUPABASE_PROJECT_URL_STAGING); console.log(url.hostname.split('.')[0]);")"
+          pnpm exec supabase link --project-ref "$project_ref" --password "$SUPABASE_DB_PASSWORD_STAGING"
+          pnpm exec supabase db push
 
       - name: Sync Stripe Worker secrets to staging
         env:
